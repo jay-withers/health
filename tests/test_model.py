@@ -13,6 +13,7 @@ from .factories import (
     block,
     condition,
     diet,
+    diet_item,
     entry,
     exercise,
     garmin_activity,
@@ -31,6 +32,7 @@ def test_round_trips_through_json():
         sessions=(session("2026-09-15", "2026-09-01", "A", entry()),),
         achievements=(achievement(),),
         conditions=(condition(),),
+        diet_items=(diet_item(id="i2", kind="drink"), diet_item(amount="one bowl", note="am")),
         diet=(diet(calories=2400, protein_g=160),),
         medications=(medication(note="with breakfast"),),
         goals=(goal(),),
@@ -541,39 +543,51 @@ def test_rest_reads_in_seconds_then_minutes(seconds, label):
 def test_a_bare_diet_and_medication_round_trip():
     """The optional fields are left out when empty, and read back as empty."""
     log = Log(
-        diet=(diet(),),
+        diet_items=(diet_item(),),
         medications=(medication(dose="", frequency="", started="", note=""),),
     )
     payload = log.to_json()
-    assert "calories" not in payload
+    assert '"amount"' not in payload
     assert '"dose"' not in payload
     assert Log.from_json(payload) == log
 
 
-def test_the_current_diet_is_the_latest_version():
-    log = Log(diet=(diet(id="new", since="2026-10-01"), diet(id="old", since="2026-01-01")))
-    current = log.current_diet
-    assert current is not None
-    assert current.id == "new"
-    assert Log().current_diet is None
+def test_a_diet_description_from_before_the_list_is_kept_until_deleted():
+    """v0.52.0 stored the diet as described days. Dropping one would lose what
+    was typed, and fail the deploy's round trip."""
+    stored = '{"diet": [{"id": "d1", "since": "2026-11-22", "description": "oats"}]}'
+    log = Log.from_json(stored)
+    assert Log.from_json(log.to_json()) == log
+    assert log.diet[0].description == "oats"
+    assert log.without_diet("d1").diet == ()
 
 
-def test_a_diet_from_a_new_date_is_a_new_version():
-    log = Log(diet=(diet(id="old", since="2026-01-01"),))
-    updated = log.with_diet(diet(id="new", since="2026-10-01"))
-    assert [d.id for d in updated.diet] == ["old", "new"]
+def test_with_diet_item_replaces_by_id():
+    log = Log(diet_items=(diet_item(id="i1", days_per_week=7),))
+    edited = log.with_diet_item(diet_item(id="i1", days_per_week=3))
+    assert [(i.id, i.days_per_week) for i in edited.diet_items] == [("i1", 3)]
+    added = log.with_diet_item(diet_item(id="i2"))
+    assert [i.id for i in added.diet_items] == ["i1", "i2"]
 
 
-def test_a_diet_saved_twice_on_one_day_replaces_rather_than_stacks():
-    """A typo fixed just after saving is not a change of diet."""
-    log = Log(diet=(diet(id="old", since="2026-01-01"), diet(id="typo", since="2026-10-01")))
-    updated = log.with_diet(diet(id="fixed", since="2026-10-01", description="fixed"))
-    assert [d.id for d in updated.diet] == ["old", "fixed"]
+def test_without_diet_item_removes_by_id():
+    log = Log(diet_items=(diet_item(id="i1"), diet_item(id="i2")))
+    assert [i.id for i in log.without_diet_item("i1").diet_items] == ["i2"]
 
 
-def test_without_diet_removes_one_version():
-    log = Log(diet=(diet(id="a", since="2026-01-01"), diet(id="b", since="2026-10-01")))
-    assert [d.id for d in log.without_diet("a").diet] == ["b"]
+@pytest.mark.parametrize(
+    "days, label",
+    [(7, "every day"), (5, "5 days a week"), (1, "1 day a week"), (0, "less than weekly")],
+)
+def test_a_diet_item_says_how_often(days, label):
+    assert diet_item(days_per_week=days).days_label == label
+
+
+def test_a_diet_item_missing_its_days_reads_as_every_day_but_zero_stays_zero():
+    missing = Log.from_json('{"diet_items": [{"id": "i", "name": "x"}]}')
+    assert missing.diet_items[0].days_per_week == 7
+    stored = '{"diet_items": [{"id": "i", "name": "x", "days_per_week": 0}]}'
+    assert Log.from_json(stored).diet_items[0].days_per_week == 0
 
 
 def test_with_medication_replaces_by_id():
@@ -588,3 +602,22 @@ def test_with_medication_replaces_by_id():
 def test_without_medication_removes_by_id():
     log = Log(medications=(medication(id="m1"), medication(id="m2", name="Ibuprofen")))
     assert [m.id for m in log.without_medication("m1").medications] == ["m2"]
+
+
+def test_a_diet_section_is_most_often_first_then_a_to_z():
+    log = Log(
+        diet_items=(
+            diet_item(id="1", name="toast", days_per_week=2),
+            diet_item(id="2", name="Eggs", days_per_week=2),
+            diet_item(id="3", name="Oats"),
+            diet_item(id="4", name="Tea", kind="drink"),
+        )
+    )
+    assert [i.name for i in log.diet_items_of("food")] == ["Oats", "Eggs", "toast"]
+    assert [i.name for i in log.diet_items_of("drink")] == ["Tea"]
+
+
+def test_a_stored_kind_is_kept_as_it_is():
+    """Coerced on read, a stored empty kind would change in the round trip."""
+    stored = '{"diet_items": [{"id": "i", "name": "x", "kind": ""}]}'
+    assert Log.from_json(stored).diet_items[0].kind == ""

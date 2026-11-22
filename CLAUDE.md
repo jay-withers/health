@@ -131,8 +131,8 @@ that has never existed.
 **`integrity.check` is the log's rules**, because `Log.from_json` forgives
 everything: no negative reps or load, no load that isn't a finite number, no
 session date that doesn't parse, one session per date and day, one entry per
-exercise in it, no duplicate ids, Garmin dates or diet start dates, no negative
-calories or protein in a diet. `store.update` refuses a change that adds a
+exercise in it, no duplicate ids or Garmin dates, no diet item eaten on more
+than 7 (or fewer than 0) days a week. `store.update` refuses a change that adds a
 problem (an old one is tolerated, so the log never goes read-only), the deploy
 selfcheck runs appkit's round trip against the live log (will this
 release drop a stored value?) but not the rules, which a deploy can't affect,

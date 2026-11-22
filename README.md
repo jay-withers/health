@@ -85,23 +85,20 @@ Eight sections that are not derived from sets and reps:
 - **Injuries & conditions** (`/conditions`) — structured records (body part,
   status, start/resolved dates, a note), marked resolved by hand. Read by the
   insight so it does not suggest anything that would aggravate an active one.
-- **Diet** (`/diet`) — a description of a typical day's eating, with optional
-  daily calories and protein. Not a food diary: it is written once and
-  updated when the diet changes. Each update is a new version from the date
-  given, and earlier versions stay listed, so a change of diet sits in the
-  record beside the weight and recovery it might explain. **Edit** corrects
-  one version in place, keeping its date, so fixing a typo isn't a diet
-  change; an update saved twice with the same date also replaces rather than
-  adds. A start date after today is refused, since the latest date is the
-  current diet.
+- **Diet** (`/diet`) — a typical week's food and drink: two lists, **Food**
+  and **Drinks**, each item with how many days a week you have it (every day
+  down to less than weekly), an optional amount and a note. Not a food diary:
+  you set it up once and edit it when what you eat changes. A description
+  saved by v0.52.0, which recorded the diet as free text, is still shown
+  under "Your earlier description" until you delete it, and the prompts
+  still read it until then.
 - **Medication** (`/medications`) — medication and supplements: name, dose,
   how often, start date and a note, marked stopped by hand like a condition.
   No daily ticks.
 
-  The insight and Chat both read the current diet and active medication (stopped
-  ones are left out), along with whether the diet changed in the last week. So
-  medication names reach DeepSeek. Both prompts tell the model never to advise
-  starting, stopping or changing a medication.
+  The insight and Chat both read the diet and active medication (stopped ones
+  are left out). So medication names reach DeepSeek. Both prompts tell the
+  model never to advise starting, stopping or changing a medication.
 - **Insights** (`/insights`) — an index linking to three sub-pages, not a page
   in its own right. **AI Insights** (`/insights/ai`) is a DeepSeek-generated
   summary of the week, dated by when it was generated rather than the week it
@@ -248,7 +245,7 @@ five sessions chosen to put every card into a different state (climbing inside
 the range, ready to add weight, stalled below it, and never logged), so a change
 to the session screen can be seen rather than imagined. The same sample also
 seeds an achievement, a goal in each of active/achieved, a condition in each of
-active/resolved, a current and an earlier diet, a medication in each of
+active/resolved, food and drinks at several frequencies, a medication in each of
 active/stopped, and a weekly insight, so none of those sections is the one
 blank thing in an otherwise-populated local run. `make seed FORCE=1`
 replaces an existing one (make cannot take `--force` as a target argument).

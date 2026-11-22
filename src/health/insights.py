@@ -47,9 +47,10 @@ SYSTEM_PROMPT = (
     "or ride alongside the lifting, time spent in the higher heart rate "
     "zones, a sleep or resting-heart-rate trend worth flagging) rather than "
     "listing it separately — it is context for the same week, not a second "
-    "report. A typical diet and current medication or supplements may be "
-    "given: mention the diet only where it bears on the week (protein against "
-    "the training, a recent change against recovery or weight), bear in mind "
+    "report. A typical week's food and drink and current medication or "
+    "supplements may be given: mention the diet only where it bears on the "
+    "week (protein against the training, alcohol or caffeine against sleep "
+    "and recovery), bear in mind "
     "that some medications affect heart rate, recovery or performance when "
     "reading the Garmin data, and never advise starting, stopping or changing "
     "a medication."
@@ -101,7 +102,7 @@ def _prompt(log: Log, today: date) -> str:
     else:
         lines.append("- none")
 
-    lines.extend(_diet_lines(log, cutoff))
+    lines.extend(_diet_lines(log))
     lines.extend(_medication_lines(log))
 
     lines.append("\nActive goals:")
@@ -140,27 +141,35 @@ def _prompt(log: Log, today: date) -> str:
     return "\n".join(lines)
 
 
-def _diet_lines(log: Log, cutoff: str) -> list[str]:
-    """The typical diet as it stands, and whether it changed this week."""
-    diet = log.current_diet
-    if diet is None:
-        return ["\nTypical diet:", "- none recorded"]
-    figures = [
-        figure
-        for figure in (
-            f"~{diet.calories} kcal" if diet.calories else "",
-            f"~{diet.protein_g} g protein" if diet.protein_g else "",
+def _diet_lines(log: Log) -> list[str]:
+    """A typical week's food and drink, most often first, with how often."""
+    lines = ["\nTypical diet (food and drink in a usual week):"]
+    if not log.diet_items and not log.diet:
+        return [*lines, "- none recorded"]
+    for kind, heading in (("food", "Food"), ("drink", "Drinks")):
+        items = log.diet_items_of(kind)
+        if not items:
+            continue
+        lines.append(f"{heading}:")
+        for i in items:
+            what = f"{i.name} ({i.amount})" if i.amount else i.name
+            line = f"- {what}: {i.days_label}"
+            lines.append(f"{line}; {i.note}" if i.note else line)
+    # A description saved before the diet was a list is still what was said
+    # about the diet, until it is deleted. Only the latest: earlier ones were
+    # replaced by it, and sent alongside would read as a second current diet.
+    if log.diet:
+        latest = max(log.diet, key=lambda d: d.since)
+        described = "\n  ".join(
+            line.strip() for line in latest.description.splitlines() if line.strip()
         )
-        if figure
-    ]
-    # Continuation lines indented, so a description typed over several lines
-    # stays one item rather than reading as loose text between sections.
-    described = "\n  ".join(line.strip() for line in diet.description.splitlines() if line.strip())
-    lines = [f"\nTypical diet (since {diet.since}):", f"- {described}"]
-    if figures:
-        lines.append(f"- a typical day: {', '.join(figures)}")
-    if diet.since >= cutoff and len(log.diet) > 1:
-        lines.append(f"- this diet changed on {diet.since}, this week")
+        lines += [f"Described in words before the list (from {latest.since}):", f"- {described}"]
+        figures = [
+            f"~{latest.calories} kcal" if latest.calories else "",
+            f"~{latest.protein_g} g protein" if latest.protein_g else "",
+        ]
+        if any(figures):
+            lines.append(f"- a typical day: {', '.join(f for f in figures if f)}")
     return lines
 
 
