@@ -8,6 +8,7 @@ from health.model import (
     Condition,
     Day,
     Diet,
+    DietItem,
     Entry,
     Exercise,
     GarminActivity,
@@ -96,6 +97,19 @@ def diet(
     protein_g: int = 0,
 ) -> Diet:
     return Diet(id=id, since=since, description=description, calories=calories, protein_g=protein_g)
+
+
+def diet_item(
+    id: str = "item1",
+    name: str = "Porridge",
+    kind: str = "food",
+    days_per_week: int = 7,
+    amount: str = "",
+    note: str = "",
+) -> DietItem:
+    return DietItem(
+        id=id, name=name, kind=kind, days_per_week=days_per_week, amount=amount, note=note
+    )
 
 
 def medication(

@@ -17,7 +17,7 @@ from appkit import integrity as kit
 from health import integrity, seed
 from health.model import Entry, GarminActivity, GarminDay, Log, SetLog
 
-from .factories import achievement, block, diet, entry, medication, session
+from .factories import achievement, block, diet, diet_item, entry, medication, session
 
 
 def _log(*sessions: Any, **more: Any) -> Log:
@@ -117,17 +117,24 @@ def test_a_duplicate_medication_id():
     assert found == ["medications: id m1 is used 2 times"]
 
 
-def test_two_diets_starting_on_one_day():
-    found = integrity.check(Log(diet=(diet("d1"), diet("d2"))))
-    assert found == ["diet: since 2026-09-01 is used 2 times"]
-
-
-def test_a_negative_diet_figure_names_its_position_not_its_text():
+def test_a_duplicate_diet_item_or_description_id():
     found = integrity.check(
-        Log(diet=(diet("d1", since="2026-01-01"), diet("d2", calories=-1, protein_g=-5)))
+        Log(diet_items=(diet_item("i1"), diet_item("i1")), diet=(diet("d1"), diet("d1")))
     )
-    assert found == ["diet[1]: negative calories", "diet[1]: negative protein"]
+    assert found == ["diet_items: id i1 is used 2 times", "diet: id d1 is used 2 times"]
+
+
+@pytest.mark.parametrize("days", [-1, 8])
+def test_days_a_week_outside_a_week_names_its_position_not_its_name(days):
+    found = integrity.check(Log(diet_items=(diet_item("i1"), diet_item("i2", days_per_week=days))))
+    assert found == ["diet_items[1]: days a week is not 0-7"]
     assert not any("Porridge" in p for p in found)
+
+
+def test_a_diet_item_that_is_neither_food_nor_drink():
+    """It would be on no page and in no prompt."""
+    found = integrity.check(Log(diet_items=(diet_item("i1", kind="snack"),)))
+    assert found == ["diet_items[0]: kind is not food or drink"]
 
 
 def test_a_problem_never_names_an_exercise_or_a_load():

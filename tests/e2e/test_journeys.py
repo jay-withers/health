@@ -124,16 +124,18 @@ def test_a_new_medication_is_listed_after_a_reload(signed_in: Page) -> None:
     expect(page.get_by_text(name)).to_be_visible()
 
 
-def test_an_updated_diet_is_shown_after_a_reload(signed_in: Page) -> None:
+def test_a_new_drink_is_listed_after_a_reload(signed_in: Page) -> None:
     page = signed_in
-    description = f"Oats and eggs {uuid.uuid4().hex[:6]}"
-    page.goto("/diet/new")
-    page.fill('textarea[name="description"]', description)
+    name = f"Green tea {uuid.uuid4().hex[:6]}"
+    page.goto("/diet/new?kind=drink")
+    page.fill('input[name="name"]', name)
+    page.select_option('select[name="days_per_week"]', "3")
     page.click('form[action="/diet"] [type="submit"]')
     page.wait_for_url("**/diet")
 
     page.reload()
-    expect(page.get_by_text(description)).to_be_visible()
+    card = page.locator(".card", has_text=name)
+    expect(card).to_contain_text("3 days a week")
 
 
 def test_back_leaves_a_page_rather_than_stepping_through_its_chips(signed_in: Page) -> None:

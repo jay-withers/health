@@ -360,15 +360,68 @@ class Condition:
         )
 
 
+# What a diet item can be, and the section of /diet it is listed under.
+DIET_KINDS: tuple[str, ...] = ("food", "drink")
+
+
+@dataclass(frozen=True)
+class DietItem:
+    """Something eaten or drunk routinely, and on how many days of a week.
+
+    Not a food diary: the list is the typical week, edited when it changes,
+    so nothing has to be entered day by day. `days_per_week` 0 means less
+    than weekly, still worth listing (a takeaway, a weekend's drinks).
+    """
+
+    id: str
+    name: str
+    kind: str = "food"
+    days_per_week: int = 7
+    amount: str = ""
+    note: str = ""
+
+    @property
+    def days_label(self) -> str:
+        if self.days_per_week >= 7:
+            return "every day"
+        if self.days_per_week <= 0:
+            return "less than weekly"
+        return f"{self.days_per_week} day{'s' if self.days_per_week > 1 else ''} a week"
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "days_per_week": self.days_per_week,
+        }
+        if self.amount:
+            payload["amount"] = self.amount
+        if self.note:
+            payload["note"] = self.note
+        return payload
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> DietItem:
+        days = payload.get("days_per_week", 7)
+        return cls(
+            id=str(payload.get("id", "")),
+            name=str(payload.get("name", "")),
+            kind=str(payload.get("kind", "food")),
+            days_per_week=int(days if days is not None else 7),
+            amount=str(payload.get("amount", "")),
+            note=str(payload.get("note", "")),
+        )
+
+
 @dataclass(frozen=True)
 class Diet:
-    """One version of the typical diet: what a normal day's eating looks like.
+    """A typical-day description, the shape v0.52.0 recorded the diet in.
 
-    Not a food diary. It is written once and rewritten when the diet changes,
-    and each rewrite is a new version from `since` rather than an overwrite, so
-    "changed what I eat on X" stays in the record beside the weight and
-    recovery it might explain. `calories`/`protein_g` are a typical day's
-    figure, 0 when not given.
+    No longer written: the diet is now a list of `DietItem`s. Still read and
+    written back, because the log may hold one and dropping it would lose
+    what was typed (and fail the deploy's round trip). /diet shows any there
+    are, to copy into the list and delete.
     """
 
     id: str
@@ -739,6 +792,7 @@ class Log:
     sessions: tuple[Session, ...] = ()
     achievements: tuple[Achievement, ...] = ()
     conditions: tuple[Condition, ...] = ()
+    diet_items: tuple[DietItem, ...] = ()
     diet: tuple[Diet, ...] = ()
     medications: tuple[Medication, ...] = ()
     goals: tuple[Goal, ...] = ()
@@ -890,21 +944,22 @@ class Log:
     def without_condition(self, condition_id: str) -> Log:
         return replace(self, conditions=tuple(c for c in self.conditions if c.id != condition_id))
 
-    @property
-    def current_diet(self) -> Diet | None:
-        """The typical diet as it stands: the version with the latest `since`."""
-        if not self.diet:
-            return None
-        return max(self.diet, key=lambda d: d.since)
+    def diet_items_of(self, kind: str) -> tuple[DietItem, ...]:
+        """One section of the diet, most often first, then A to Z."""
+        return tuple(
+            sorted(
+                (i for i in self.diet_items if i.kind == kind),
+                key=lambda i: (-i.days_per_week, i.name.lower()),
+            )
+        )
 
-    def with_diet(self, diet: Diet) -> Log:
-        """Add a diet version, replacing any already starting on the same day.
+    def with_diet_item(self, item: DietItem) -> Log:
+        """Add or replace a diet item by id — resubmitting edits it."""
+        others = tuple(i for i in self.diet_items if i.id != item.id)
+        return replace(self, diet_items=(*others, item))
 
-        A same-day replace rather than a second version, so fixing a typo just
-        after saving doesn't record a diet change that never happened.
-        """
-        others = tuple(d for d in self.diet if d.since != diet.since and d.id != diet.id)
-        return replace(self, diet=(*others, diet))
+    def without_diet_item(self, item_id: str) -> Log:
+        return replace(self, diet_items=tuple(i for i in self.diet_items if i.id != item_id))
 
     def without_diet(self, diet_id: str) -> Log:
         return replace(self, diet=tuple(d for d in self.diet if d.id != diet_id))
@@ -1106,6 +1161,9 @@ class Log:
                 "conditions": [
                     c.to_json() for c in sorted(self.conditions, key=lambda c: c.started)
                 ],
+                "diet_items": [
+                    i.to_json() for i in sorted(self.diet_items, key=lambda i: (i.kind, i.id))
+                ],
                 "diet": [d.to_json() for d in sorted(self.diet, key=lambda d: d.since)],
                 "medications": [
                     m.to_json() for m in sorted(self.medications, key=lambda m: (m.started, m.id))
@@ -1160,6 +1218,11 @@ class Log:
                 Condition.from_json(c)
                 for c in payload.get("conditions", []) or ()
                 if isinstance(c, dict)
+            ),
+            diet_items=tuple(
+                DietItem.from_json(i)
+                for i in payload.get("diet_items", []) or ()
+                if isinstance(i, dict)
             ),
             diet=tuple(
                 Diet.from_json(d) for d in payload.get("diet", []) or () if isinstance(d, dict)

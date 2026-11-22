@@ -4,29 +4,30 @@
 {% block back %}<a class="back" href="/"><span class="arrow">&larr;</span> Home</a>{% endblock %}
 {% block body %}
 
-<a class="btn small" href="/diet/new">{% if current %}Update diet{% else %}Describe your diet{% endif %}</a>
+<p class="last">A typical week: what you have, and on how many days. Edit it when that changes.</p>
 
-<h2 class="slot" style="margin-top:24px">Typical day</h2>
-{% if current %}
+{% for heading, kind, items in (("Food", "food", food), ("Drinks", "drink", drinks)) %}
+<h2 class="slot" style="margin-top:24px">{{ heading }}</h2>
+{% for i in items %}
 <div class="card">
-  <div class="slot">since {{ current.since }}</div>
-  <p class="diet">{{ current.description }}</p>
-  {% if current.calories or current.protein_g %}
-  <p class="last">
-    {% if current.calories %}~{{ current.calories }} kcal{% endif %}{% if current.calories and current.protein_g %} &middot; {% endif %}{% if current.protein_g %}~{{ current.protein_g }} g protein{% endif %} a day
-  </p>
-  {% endif %}
+  <div class="slot">{{ i.days_label }}</div>
+  <div class="name">{{ i.name }}</div>
+  {% if i.amount %}<p class="last">{{ i.amount }}</p>{% endif %}
+  {% if i.note %}<p class="last">{{ i.note }}</p>{% endif %}
   <div class="actions">
-    <a class="btn ghost small" href="/diet/{{ current.id }}/edit">Edit</a>
+    <a class="btn ghost small" href="/diet/{{ i.id }}/edit">Edit</a>
   </div>
 </div>
 {% else %}
-<p class="last">Nothing recorded yet. Describe a normal day's eating once, and update it when that changes.</p>
-{% endif %}
+<p class="last">Nothing listed.</p>
+{% endfor %}
+<a class="btn small" href="/diet/new?kind={{ kind }}">Add {{ "food" if kind == "food" else "a drink" }}</a>
+{% endfor %}
 
-{% if earlier %}
-<h2 class="slot" style="margin-top:24px">Earlier</h2>
-{% for d in earlier %}
+{% if legacy %}
+<h2 class="slot" style="margin-top:24px">Your earlier description</h2>
+<p class="last">Saved before the diet was a list. Add what it lists above, then delete it.</p>
+{% for d in legacy %}
 <div class="card" style="opacity:.72">
   <div class="slot">from {{ d.since }}</div>
   <p class="diet">{{ d.description }}</p>
@@ -36,7 +37,9 @@
   </p>
   {% endif %}
   <div class="actions">
-    <a class="btn ghost small" href="/diet/{{ d.id }}/edit">Edit</a>
+    <form method="post" action="/diet/description/{{ d.id }}/delete" data-confirm="Delete this description?">
+      <button type="submit" class="btn ghost small">Delete</button>
+    </form>
   </div>
 </div>
 {% endfor %}

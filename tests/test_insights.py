@@ -17,6 +17,7 @@ from .factories import (
     block,
     condition,
     diet,
+    diet_item,
     entry,
     garmin_activity,
     garmin_day,
@@ -201,42 +202,28 @@ def test_prompt_notes_no_activities_when_only_days_are_synced():
     assert "no activities logged" in prompt
 
 
-def test_prompt_includes_the_current_diet_and_its_figures_but_not_earlier_ones():
+def test_prompt_lists_food_then_drinks_most_often_first():
     log = Log(
-        diet=(
-            diet(id="old", since="2026-01-01", description="pasta every night"),
-            diet(id="now", since="2026-06-01", description="chicken and rice", protein_g=160),
+        diet_items=(
+            diet_item(id="i1", name="Takeaway", days_per_week=0, note="Fridays"),
+            diet_item(id="i2", name="Porridge", amount="one bowl"),
+            diet_item(id="i3", name="Beer", kind="drink", days_per_week=2, amount="2 pints"),
         )
     )
     prompt = _prompt(log, date(2026, 9, 15))
-    assert "Typical diet (since 2026-06-01):" in prompt
-    assert "chicken and rice" in prompt
-    assert "~160 g protein" in prompt
-    assert "kcal" not in prompt
-    assert "pasta" not in prompt
-    assert "changed on" not in prompt
-
-
-def test_prompt_flags_a_diet_that_changed_this_week():
-    log = Log(
-        diet=(
-            diet(id="old", since="2026-01-01"),
-            diet(id="now", since="2026-09-12", calories=2400),
-        )
-    )
-    prompt = _prompt(log, date(2026, 9, 15))
-    assert "this diet changed on 2026-09-12" in prompt
-    assert "~2400 kcal" in prompt
-
-
-def test_a_first_diet_recorded_this_week_is_not_a_change():
-    prompt = _prompt(Log(diet=(diet(since="2026-09-12"),)), date(2026, 9, 15))
-    assert "changed on" not in prompt
+    assert (
+        "Typical diet (food and drink in a usual week):\n"
+        "Food:\n"
+        "- Porridge (one bowl): every day\n"
+        "- Takeaway: less than weekly; Fridays\n"
+        "Drinks:\n"
+        "- Beer (2 pints): 2 days a week\n"
+    ) in prompt
 
 
 def test_prompt_says_when_no_diet_or_medication_is_recorded():
     prompt = _prompt(Log(), date(2026, 9, 15))
-    assert "Typical diet:\n- none recorded" in prompt
+    assert "Typical diet (food and drink in a usual week):\n- none recorded" in prompt
     assert "Current medication and supplements:\n- none" in prompt
 
 
@@ -252,7 +239,27 @@ def test_prompt_includes_current_medication_but_not_stopped():
     assert "Ibuprofen" not in prompt
 
 
-def test_a_diet_typed_over_several_lines_stays_one_item():
-    log = Log(diet=(diet(description="Breakfast: oats\r\n\nLunch: wrap\n"),))
-    prompt = _prompt(log, date(2026, 9, 15))
-    assert "- Breakfast: oats\n  Lunch: wrap\n" in prompt
+def test_a_description_from_before_the_list_is_still_sent_and_stays_one_item():
+    log = Log(diet=(diet(since="2026-11-22", description="Breakfast: oats\r\n\nLunch: wrap\n"),))
+    prompt = _prompt(log, date(2026, 11, 22))
+    assert (
+        "Described in words before the list (from 2026-11-22):\n- Breakfast: oats\n  Lunch: wrap\n"
+    ) in prompt
+
+
+def test_only_the_latest_old_description_is_sent_under_its_own_heading_with_figures():
+    """An older one was replaced by it, and inside the drinks list it would read as a drink."""
+    log = Log(
+        diet_items=(diet_item(name="Coffee", kind="drink"),),
+        diet=(
+            diet(id="old", since="2026-01-01", description="pasta every night"),
+            diet(id="now", since="2026-11-01", description="oats", calories=2400, protein_g=160),
+        ),
+    )
+    prompt = _prompt(log, date(2026, 11, 22))
+    assert "pasta" not in prompt
+    assert (
+        "Drinks:\n- Coffee: every day\n"
+        "Described in words before the list (from 2026-11-01):\n- oats\n"
+        "- a typical day: ~2400 kcal, ~160 g protein\n"
+    ) in prompt

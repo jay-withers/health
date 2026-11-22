@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,6 +29,7 @@ from health.model import Block, Day, Log, SetLog
 
 from .factories import (
     block,
+    diet,
     entry,
     exercise,
     garmin_activity,
@@ -1489,166 +1490,151 @@ def test_conditions_are_listed_most_recently_started_first(client, seeded):
 # --- diet ----------------------------------------------------------------------
 
 
-def test_the_diet_page_before_anything_is_recorded(client, seeded):
+def test_the_diet_page_before_anything_is_listed(client, seeded):
     login(client)
     page = client.get("/diet").text
-    assert "Nothing recorded yet" in page
-    assert 'href="/diet/new"' in page
-    assert client.get("/diet/new").status_code == 200
+    assert page.count("Nothing listed.") == 2
+    assert 'href="/diet/new?kind=food"' in page
+    assert 'href="/diet/new?kind=drink"' in page
+    assert "earlier description" not in page
 
 
-def test_updating_the_diet_keeps_the_earlier_version(client, seeded):
+@pytest.mark.parametrize("kind, noun", [("food", "Add Food"), ("drink", "Add Drink")])
+def test_the_add_form_starts_on_the_kind_asked_for(client, seeded, kind, noun):
     login(client)
-    client.post("/diet", data={"description": "pasta every night", "since": "2026-01-01"})
+    page = client.get(f"/diet/new?kind={kind}").text
+    assert noun in page
+    assert f'<option value="{kind}" selected>' in page
+    assert '<option value="7" selected>' in page
+    assert "/delete" not in page
+
+
+def test_an_unknown_kind_in_the_link_falls_back_to_food(client, seeded):
+    login(client)
+    assert '<option value="food" selected>' in client.get("/diet/new?kind=snack").text
+
+
+def test_adding_food_and_drink_lists_each_under_its_own_heading(client, seeded):
+    login(client)
     response = client.post(
         "/diet",
-        data={
-            "description": "chicken and rice",
-            "since": "2026-09-01",
-            "calories": "2400",
-            "protein_g": "160",
-        },
+        data={"name": "Porridge", "kind": "food", "days_per_week": "7", "amount": "one bowl"},
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/diet"
+    client.post("/diet", data={"name": "Toast", "kind": "food", "days_per_week": "2"})
+    client.post(
+        "/diet", data={"name": "Beer", "kind": "drink", "days_per_week": "0", "note": "weekends"}
+    )
 
-    log = store.load()[0]
-    assert [d.since for d in log.diet] == ["2026-01-01", "2026-09-01"]
-    current = log.current_diet
-    assert current is not None
-    assert (current.calories, current.protein_g) == (2400, 160)
+    items = {i.name: i for i in store.load()[0].diet_items}
+    assert (items["Porridge"].kind, items["Porridge"].days_per_week) == ("food", 7)
+    assert items["Porridge"].amount == "one bowl"
+    assert (items["Beer"].kind, items["Beer"].days_per_week, items["Beer"].note) == (
+        "drink",
+        0,
+        "weekends",
+    )
 
     page = client.get("/diet").text
-    assert page.index("chicken and rice") < page.index("Earlier") < page.index("pasta")
-    assert "~2400 kcal" in page
-    assert "~160 g protein" in page
+    assert (
+        page.index(">Food<")
+        < page.index("Porridge")
+        < page.index("Toast")
+        < page.index(">Drinks<")
+        < page.index("Beer")
+    )
+    assert "every day" in page
+    assert "2 days a week" in page
+    assert "less than weekly" in page
 
 
-def test_a_new_diet_version_starts_from_the_current_one_dated_today(client, seeded):
+def test_editing_a_diet_item(client, seeded):
     login(client)
+    client.post("/diet", data={"name": "Coffee", "kind": "drink", "days_per_week": "7"})
+    item_id = store.load()[0].diet_items[0].id
+
+    page = client.get(f"/diet/{item_id}/edit").text
+    assert 'value="Coffee"' in page
+    assert '<option value="drink" selected>' in page
+    assert f'action="/diet/{item_id}/delete"' in page
+
     client.post(
-        "/diet", data={"description": "chicken and rice", "protein_g": "160", "since": "2026-01-01"}
+        f"/diet/{item_id}",
+        data={"name": "Coffee", "kind": "drink", "days_per_week": "3", "amount": "1 cup"},
     )
-    page = client.get("/diet/new").text
-    assert 'action="/diet"' in page
-    assert f'value="{datetime.now(UTC).date().isoformat()}"' in page
-    assert "/delete" not in page
-    assert "chicken and rice</textarea>" in page
-    assert 'value="160"' in page
+    edited = store.load()[0].diet_items
+    assert [(i.id, i.days_per_week, i.amount) for i in edited] == [(item_id, 3, "1 cup")]
 
 
-def test_editing_a_diet_corrects_it_in_place_rather_than_adding_a_version(client, seeded):
-    """A typo fixed days later is not a change of diet."""
+def test_deleting_a_diet_item(client, seeded):
     login(client)
-    client.post("/diet", data={"description": "chiken", "since": "2026-01-01", "calories": "2040"})
-    diet_id = store.load()[0].diet[0].id
-
-    page = client.get(f"/diet/{diet_id}/edit").text
-    assert f'action="/diet/{diet_id}"' in page
-    assert 'value="2026-01-01"' in page
-    assert f'action="/diet/{diet_id}/delete"' in page
-
-    response = client.post(
-        f"/diet/{diet_id}",
-        data={"description": "chicken", "since": "2026-01-01", "calories": "2400"},
-    )
-    assert response.status_code == 303
-    log = store.load()[0]
-    assert len(log.diet) == 1
-    assert (log.diet[0].id, log.diet[0].description, log.diet[0].calories) == (
-        diet_id,
-        "chicken",
-        2400,
-    )
+    client.post("/diet", data={"name": "Coffee", "kind": "drink"})
+    item_id = store.load()[0].diet_items[0].id
+    assert client.post(f"/diet/{item_id}/delete").status_code == 303
+    assert store.load()[0].diet_items == ()
 
 
-def test_editing_a_diet_onto_another_versions_date_is_refused(client, seeded):
-    """Saved, it would silently replace the other version."""
+def test_a_diet_item_with_no_name_is_not_recorded_or_saved(client, seeded):
     login(client)
-    client.post("/diet", data={"description": "old", "since": "2026-01-01"})
-    client.post("/diet", data={"description": "new", "since": "2026-09-01"})
-    old = next(d for d in store.load()[0].diet if d.description == "old")
-    response = client.post(f"/diet/{old.id}", data={"description": "old", "since": "2026-09-01"})
-    assert response.status_code == 422
-    assert sorted(d.description for d in store.load()[0].diet) == ["new", "old"]
+    client.post("/diet", data={"name": " ", "kind": "food"})
+    assert store.load()[0].diet_items == ()
+    client.post("/diet", data={"name": "Kept"})
+    item_id = store.load()[0].diet_items[0].id
+    client.post(f"/diet/{item_id}", data={"name": ""})
+    assert store.load()[0].diet_items[0].name == "Kept"
 
 
-def test_editing_a_diet_with_no_description_or_an_unknown_id_does_nothing(client, seeded):
+def test_a_diet_item_defaults_to_food_every_day(client, seeded):
     login(client)
-    client.post("/diet", data={"description": "kept", "since": "2026-01-01"})
-    diet_id = store.load()[0].diet[0].id
-    assert client.post(f"/diet/{diet_id}", data={"description": ""}).status_code == 303
-    assert client.post("/diet/nope", data={"description": "x"}).status_code == 303
-    assert [d.description for d in store.load()[0].diet] == ["kept"]
-    response = client.get("/diet/nope/edit")
-    assert response.status_code == 303
-    assert response.headers["location"] == "/diet"
-
-
-def test_a_diet_starting_after_today_is_refused(client, seeded):
-    """It would become the current diet at once, and a mistyped year is easy."""
-    login(client)
-    # The app's today is UTC's: two days on is after it in every time zone.
-    later = (datetime.now(UTC).date() + timedelta(days=2)).isoformat()
-    response = client.post("/diet", data={"description": "x", "since": later})
-    assert response.status_code == 422
-    assert store.load()[0].diet == ()
-
-
-def test_a_diet_with_no_description_is_not_recorded(client, seeded):
-    login(client)
-    assert client.post("/diet", data={"description": "  "}).status_code == 303
-    assert store.load()[0].diet == ()
-
-
-def test_a_diet_with_blank_figures_records_them_as_not_given(client, seeded):
-    login(client)
-    client.post("/diet", data={"description": "x", "calories": "", "protein_g": ""})
-    saved = store.load()[0].diet[0]
-    assert (saved.calories, saved.protein_g) == (0, 0)
-    assert saved.since
+    client.post("/diet", data={"name": "Water"})
+    item = store.load()[0].diet_items[0]
+    assert (item.kind, item.days_per_week) == ("food", 7)
 
 
 @pytest.mark.parametrize(
     "field, value",
-    [
-        ("calories", "24000"),
-        ("calories", "-1"),
-        ("calories", "lots"),
-        ("calories", "inf"),
-        ("protein_g", "nan"),
-        ("protein_g", "1600"),
-    ],
+    [("days_per_week", "8"), ("days_per_week", "-1"), ("days_per_week", "often"), ("kind", "x")],
 )
-def test_an_absurd_diet_figure_is_refused(client, seeded, field, value):
+def test_a_diet_item_value_no_form_offers_is_refused(client, seeded, field, value):
     login(client)
-    response = client.post("/diet", data={"description": "x", field: value})
+    response = client.post("/diet", data={"name": "x", field: value})
     assert response.status_code == 422
     assert "Nothing was saved" in response.text
+    assert store.load()[0].diet_items == ()
+
+
+def test_an_unknown_diet_item_is_a_no_op(client, seeded):
+    login(client)
+    response = client.get("/diet/nope/edit")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/diet"
+    assert client.post("/diet/nope", data={"name": "x"}).status_code == 303
+    assert store.load()[0].diet_items == ()
+
+
+def test_a_description_from_before_the_list_is_shown_until_deleted(client):
+    """v0.52.0 saved the diet as a description: it stays visible, to copy into
+    the list, rather than vanishing from the page while still in the log."""
+    store.save(Log(diet=(diet(id="d1", since="2026-11-22", description="oats", calories=2400),)))
+    login(client)
+    page = client.get("/diet").text
+    assert "Your earlier description" in page
+    assert "oats" in page
+    assert "~2400 kcal" in page
+
+    assert client.post("/diet/description/d1/delete").status_code == 303
     assert store.load()[0].diet == ()
-
-
-def test_a_diet_date_that_is_not_a_date_is_refused(client, seeded):
-    login(client)
-    response = client.post("/diet", data={"description": "x", "since": "last week"})
-    assert response.status_code == 422
-
-
-def test_deleting_an_earlier_diet(client, seeded):
-    login(client)
-    client.post("/diet", data={"description": "old", "since": "2026-01-01"})
-    client.post("/diet", data={"description": "new", "since": "2026-09-01"})
-    old = next(d for d in store.load()[0].diet if d.description == "old")
-    assert client.post(f"/diet/{old.id}/delete").status_code == 303
-    assert [d.description for d in store.load()[0].diet] == ["new"]
+    assert "earlier description" not in client.get("/diet").text
 
 
 @pytest.mark.parametrize(
     "path, data",
     [
-        ("/diet", {"description": "x"}),
-        ("/diet/any", {"description": "x"}),
+        ("/diet", {"name": "x"}),
+        ("/diet/any", {"name": "x"}),
         ("/diet/any/delete", {}),
+        ("/diet/description/any/delete", {}),
         ("/medications", {"name": "x"}),
         ("/medications/any", {"name": "x"}),
         ("/medications/any/stop", {}),

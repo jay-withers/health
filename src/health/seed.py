@@ -22,7 +22,7 @@ it has rather than to look like anyone's actual training:
 Achievements, goals, injuries/conditions, diet, medication, the insight and
 the Garmin section get the same treatment: a handful of invented entries chosen
 to put those screens into more than one state (active and achieved, active and
-resolved, current and earlier)
+resolved, food and drink)
 rather than left empty, since an empty section is the one state local work
 has the least reason to look at.
 """
@@ -36,7 +36,7 @@ from .model import (
     Block,
     Condition,
     Day,
-    Diet,
+    DietItem,
     Entry,
     Exercise,
     GarminActivity,
@@ -90,7 +90,7 @@ def sample_log(today: date | None = None) -> Log:
         sessions=_sessions(block, started),
         achievements=_achievements(now),
         conditions=_conditions(now),
-        diet=_diet(now),
+        diet_items=_diet_items(),
         medications=_medications(now),
         goals=_goals(now),
         insights=_insights(now),
@@ -192,27 +192,20 @@ def _conditions(now: date) -> tuple[Condition, ...]:
     )
 
 
-def _diet(now: date) -> tuple[Diet, ...]:
-    # Sorted by `since`, for the same reason `_conditions` is sorted by `started`.
+def _diet_items() -> tuple[DietItem, ...]:
+    # Sorted by (kind, id), the order `Log.to_json` writes them in. Days
+    # spread from every day to less than weekly, so every label shows.
     return (
-        Diet(
-            id="sample-diet-before",
-            since=(now - timedelta(days=120)).isoformat(),
-            description="Cereal for breakfast, a meal deal at lunch, pasta most evenings.",
-            calories=2600,
+        DietItem(id="sample-beer", name="Beer", kind="drink", days_per_week=1, amount="2 pints"),
+        DietItem(id="sample-coffee", name="Coffee", kind="drink", amount="2 cups"),
+        DietItem(id="sample-chicken-rice", name="Chicken and rice", days_per_week=5),
+        DietItem(
+            id="sample-porridge",
+            name="Porridge with whey",
+            amount="one bowl",
+            note="after training, otherwise toast",
         ),
-        Diet(
-            id="sample-diet-now",
-            since=(now - timedelta(days=21)).isoformat(),
-            description=(
-                "Breakfast: porridge with a scoop of whey.\n"
-                "Lunch: chicken and rice.\n"
-                "Dinner: salmon or lean mince with veg.\n"
-                "Snacks: Greek yoghurt, fruit."
-            ),
-            calories=2400,
-            protein_g=160,
-        ),
+        DietItem(id="sample-takeaway", name="Takeaway", days_per_week=0, note="most Fridays"),
     )
 
 

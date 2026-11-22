@@ -25,12 +25,13 @@ from fastapi.templating import Jinja2Templates
 
 from .. import store
 from ..model import (
+    DIET_KINDS,
     GARMIN_ZONE_COUNT,
     Achievement,
     Block,
     Condition,
     Day,
-    Diet,
+    DietItem,
     Entry,
     Exercise,
     Goal,
@@ -1028,131 +1029,114 @@ def delete_condition(condition_id: str) -> Any:
     return RedirectResponse("/conditions", status_code=status.HTTP_303_SEE_OTHER)
 
 
-# --- diet: the typical day, versioned when it changes ---------------------------
-
-# Typos, not judgements (see MAX_REPS): an extra digit, not an unusual diet.
-MAX_CALORIES = 10000
-MAX_PROTEIN_G = 1000
+# --- diet: what is eaten and drunk in a typical week ------------------------------
 
 
-def _amount(value: Any, label: str, ceiling: int) -> int:
-    """A posted whole number from 0 to `ceiling`; 0 when left blank."""
-    raw = str(value or "").strip()
-    if not raw:
-        return 0
+def _diet_item_fields(form: Any) -> dict[str, Any]:
+    """What the add and edit forms share. Days and kind come from a select, so
+    anything else was not typed by a person and is refused, not guessed at."""
+    kind = str(form.get("kind") or "food")
+    if kind not in DIET_KINDS:
+        raise InvalidInput("That isn't food or a drink. Nothing was saved.")
     try:
-        amount = int(float(raw))
-    # NaN is a ValueError here and infinity an OverflowError.
-    except (ValueError, OverflowError) as exc:
-        raise InvalidInput(f"{label} must be a number. Nothing was saved.") from exc
-    if not 0 <= amount <= ceiling:
-        raise InvalidInput(f"{label} must be between 0 and {ceiling}. Nothing was saved.")
-    return amount
+        days = int(str(form.get("days_per_week") or "7"))
+    except ValueError as exc:
+        raise InvalidInput("Days a week must be a number. Nothing was saved.") from exc
+    if not 0 <= days <= 7:
+        raise InvalidInput("Days a week must be between 0 and 7. Nothing was saved.")
+    return {
+        "name": str(form.get("name") or "").strip(),
+        "kind": kind,
+        "days_per_week": days,
+        "amount": str(form.get("amount") or "").strip(),
+        "note": str(form.get("note") or "").strip(),
+    }
 
 
 @router.get("/diet", response_class=HTMLResponse, include_in_schema=False)
 def diet_page(request: Request) -> Any:
-    """The current typical diet, and every earlier version, newest first."""
+    """Food, then drinks, each most often first. Adding or editing has its own page."""
     log, _etag = store.load()
-    current = log.current_diet
     return templates.TemplateResponse(
         request,
         "diet.html",
         {
-            "current": current,
-            "earlier": sorted(
-                (d for d in log.diet if current is None or d.id != current.id),
-                key=lambda d: d.since,
-                reverse=True,
-            ),
+            "food": log.diet_items_of("food"),
+            "drinks": log.diet_items_of("drink"),
+            "legacy": sorted(log.diet, key=lambda d: d.since, reverse=True),
         },
     )
 
 
 @router.get("/diet/new", response_class=HTMLResponse, include_in_schema=False)
-def new_diet_form(request: Request) -> Any:
-    """A new version, starting from the current one's text and dated today."""
-    log, _etag = store.load()
+def new_diet_item_form(request: Request, kind: str = "food") -> Any:
     return templates.TemplateResponse(
         request,
         "diet_form.html",
-        {"diet": None, "draft": log.current_diet, "since": _today().isoformat()},
+        {"item": None, "kind": kind if kind in DIET_KINDS else "food"},
     )
 
 
-@router.get("/diet/{diet_id}/edit", response_class=HTMLResponse, include_in_schema=False)
-def edit_diet_form(request: Request, diet_id: str) -> Any:
-    """Correct one version in place: a typo fixed is not a change of diet."""
+@router.get("/diet/{item_id}/edit", response_class=HTMLResponse, include_in_schema=False)
+def edit_diet_item_form(request: Request, item_id: str) -> Any:
     log, _etag = store.load()
-    diet = next((d for d in log.diet if d.id == diet_id), None)
-    if diet is None:
+    item = next((i for i in log.diet_items if i.id == item_id), None)
+    if item is None:
         return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(
-        request, "diet_form.html", {"diet": diet, "draft": diet, "since": diet.since}
-    )
-
-
-def _diet_fields(form: Any) -> dict[str, Any]:
-    """What the new and edit forms share. A start date after today is refused:
-    `current_diet` is the latest start, so a mistyped year would replace the
-    diet actually being eaten, in the page and in every prompt."""
-    since = _session_date(form.get("since"))
-    if since > _today().isoformat():
-        raise InvalidInput("The diet can't start after today. Nothing was saved.")
-    return {
-        "since": since,
-        "description": str(form.get("description") or "").strip(),
-        "calories": _amount(form.get("calories"), "Calories", MAX_CALORIES),
-        "protein_g": _amount(form.get("protein_g"), "Protein", MAX_PROTEIN_G),
-    }
+    return templates.TemplateResponse(request, "diet_form.html", {"item": item, "kind": item.kind})
 
 
 @router.post("/diet", include_in_schema=False)
-async def save_diet(request: Request) -> Any:
-    """A new version from `since`, or a replacement for one starting that day."""
-    fields = _diet_fields(await request.form())
-    if not fields["description"]:
+async def add_diet_item(request: Request) -> Any:
+    fields = _diet_item_fields(await request.form())
+    if not fields["name"]:
         return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
 
-    diet = Diet(id=uuid.uuid4().hex[:12], **fields)
+    item = DietItem(id=uuid.uuid4().hex[:12], **fields)
     try:
-        store.update(lambda current: current.with_diet(diet))
+        store.update(lambda current: current.with_diet_item(item))
     except store.ConflictError as exc:
-        raise ConflictResponse("the log was changed elsewhere; the diet was not saved") from exc
+        raise ConflictResponse("the log was changed elsewhere; the item was not saved") from exc
     return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/diet/{diet_id}", include_in_schema=False)
-async def edit_diet(request: Request, diet_id: str) -> Any:
-    fields = _diet_fields(await request.form())
-    if not fields["description"]:
+@router.post("/diet/{item_id}", include_in_schema=False)
+async def edit_diet_item(request: Request, item_id: str) -> Any:
+    fields = _diet_item_fields(await request.form())
+    if not fields["name"]:
         return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
 
     def apply_edit(current: Log) -> Log:
-        existing = next((d for d in current.diet if d.id == diet_id), None)
+        existing = next((i for i in current.diet_items if i.id == item_id), None)
         if existing is None:
             return current
-        # `with_diet` would replace the version already on that date, which
-        # here would delete a different version than the one being edited.
-        if any(d.since == fields["since"] and d.id != diet_id for d in current.diet):
-            raise InvalidInput(
-                "Another version of the diet starts on that date. Nothing was saved."
-            )
-        return current.with_diet(replace(existing, **fields))
+        return current.with_diet_item(replace(existing, **fields))
 
     try:
         store.update(apply_edit)
     except store.ConflictError as exc:
-        raise ConflictResponse("the log was changed elsewhere; the diet was not saved") from exc
+        raise ConflictResponse("the log was changed elsewhere; the item was not saved") from exc
     return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/diet/{diet_id}/delete", include_in_schema=False)
-def delete_diet(diet_id: str) -> Any:
+@router.post("/diet/{item_id}/delete", include_in_schema=False)
+def delete_diet_item(item_id: str) -> Any:
+    try:
+        store.update(lambda current: current.without_diet_item(item_id))
+    except store.ConflictError as exc:
+        raise ConflictResponse("the log was changed elsewhere; the item was not deleted") from exc
+    return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/diet/description/{diet_id}/delete", include_in_schema=False)
+def delete_diet_description(diet_id: str) -> Any:
+    """Delete a typical-day description from before the diet was a list."""
     try:
         store.update(lambda current: current.without_diet(diet_id))
     except store.ConflictError as exc:
-        raise ConflictResponse("the log was changed elsewhere; the diet was not deleted") from exc
+        raise ConflictResponse(
+            "the log was changed elsewhere; the description was not deleted"
+        ) from exc
     return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
 
 

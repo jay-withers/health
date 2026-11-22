@@ -1,35 +1,42 @@
 {% extends "base.html" %}
-{% block title %}{% if diet %}Edit{% else %}Update{% endif %} Diet · Health{% endblock %}
-{% block subtitle %}{% if diet %}Edit{% else %}Update{% endif %} Diet{% endblock %}
+{% set noun = "Food" if kind == "food" else "Drink" %}
+{% block title %}{% if item %}Edit{% else %}Add{% endif %} {{ noun }} · Health{% endblock %}
+{% block subtitle %}{% if item %}Edit{% else %}Add{% endif %} {{ noun }}{% endblock %}
 {% block back %}<a class="back" href="/diet"><span class="arrow">&larr;</span> Diet</a>{% endblock %}
 {% block body %}
 
-<form method="post" action="{% if diet %}/diet/{{ diet.id }}{% else %}/diet{% endif %}">
+<form method="post" action="{% if item %}/diet/{{ item.id }}{% else %}/diet{% endif %}">
   <div class="card">
-    <label class="slot" for="description">A typical day</label>
-    <textarea id="description" name="description" rows="8"
-              placeholder="e.g. Breakfast: porridge with whey. Lunch: chicken wrap. Dinner: rice, salmon, veg. Snacks: Greek yoghurt, fruit.">{{ draft.description if draft else '' }}</textarea>
-    <label class="slot" for="since" style="display:block;margin-top:10px">Eating this way since</label>
-    <input type="date" id="since" name="since" value="{{ since }}">
-    <label class="slot" for="calories" style="display:block;margin-top:10px">Calories a day (optional)</label>
-    <input type="number" id="calories" name="calories" min="0" max="10000" inputmode="numeric"
-           value="{{ draft.calories if draft and draft.calories else '' }}">
-    <label class="slot" for="protein_g" style="display:block;margin-top:10px">Protein a day, g (optional)</label>
-    <input type="number" id="protein_g" name="protein_g" min="0" max="1000" inputmode="numeric"
-           value="{{ draft.protein_g if draft and draft.protein_g else '' }}">
+    <label class="slot" for="name">What</label>
+    <input type="text" id="name" name="name" autocomplete="off"
+           placeholder="{{ 'e.g. porridge with whey' if kind == 'food' else 'e.g. coffee, beer' }}"
+           value="{{ item.name if item else '' }}">
+    <label class="slot" for="kind" style="display:block;margin-top:10px">Food or drink</label>
+    <select id="kind" name="kind">
+      <option value="food"{% if kind == "food" %} selected{% endif %}>Food</option>
+      <option value="drink"{% if kind == "drink" %} selected{% endif %}>Drink</option>
+    </select>
+    <label class="slot" for="days_per_week" style="display:block;margin-top:10px">How many days a week</label>
+    {% set days = item.days_per_week if item else 7 %}
+    <select id="days_per_week" name="days_per_week">
+      <option value="7"{% if days == 7 %} selected{% endif %}>Every day</option>
+      {% for n in range(6, 0, -1) %}
+      <option value="{{ n }}"{% if days == n %} selected{% endif %}>{{ n }} day{{ "s" if n > 1 }} a week</option>
+      {% endfor %}
+      <option value="0"{% if days == 0 %} selected{% endif %}>Less than weekly</option>
+    </select>
+    <label class="slot" for="amount" style="display:block;margin-top:10px">How much (optional)</label>
+    <input type="text" id="amount" name="amount" autocomplete="off"
+           placeholder="{{ 'e.g. one bowl' if kind == 'food' else 'e.g. 2 cups, 1 pint' }}"
+           value="{{ item.amount if item else '' }}">
+    <label class="slot" for="note" style="display:block;margin-top:10px">Note (optional)</label>
+    <input type="text" id="note" name="note" autocomplete="off" value="{{ item.note if item else '' }}">
   </div>
-  {% if diet %}
-  <p class="last">Corrects this version in place. To record a change of diet, use Update diet instead.</p>
-  {% else %}
-  <p class="last">Saved as a new version: the one with the latest date is your current diet, and
-    the others stay under Earlier. Saving again with the same date replaces it.</p>
-  {% endif %}
-  <button type="submit">Save</button>
+  <button type="submit">{% if item %}Save{% else %}Add{% endif %}</button>
 </form>
 
-{% if diet %}
-<form method="post" action="/diet/{{ diet.id }}/delete"
-      data-confirm="Delete this version of the diet?">
+{% if item %}
+<form method="post" action="/diet/{{ item.id }}/delete" data-confirm="Delete this from your diet?">
   <button type="submit" class="btn ghost small">Delete</button>
 </form>
 {% endif %}
