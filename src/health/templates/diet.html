@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Diet · Health{% endblock %}
+{% block subtitle %}Diet{% endblock %}
+{% block back %}<a class="back" href="/"><span class="arrow">&larr;</span> Home</a>{% endblock %}
+{% block body %}
+
+<a class="btn small" href="/diet/new">{% if current %}Update diet{% else %}Describe your diet{% endif %}</a>
+
+<h2 class="slot" style="margin-top:24px">Typical day</h2>
+{% if current %}
+<div class="card">
+  <div class="slot">since {{ current.since }}</div>
+  <p class="diet">{{ current.description }}</p>
+  {% if current.calories or current.protein_g %}
+  <p class="last">
+    {% if current.calories %}~{{ current.calories }} kcal{% endif %}{% if current.calories and current.protein_g %} &middot; {% endif %}{% if current.protein_g %}~{{ current.protein_g }} g protein{% endif %} a day
+  </p>
+  {% endif %}
+  <div class="actions">
+    <a class="btn ghost small" href="/diet/{{ current.id }}/edit">Edit</a>
+  </div>
+</div>
+{% else %}
+<p class="last">Nothing recorded yet. Describe a normal day's eating once, and update it when that changes.</p>
+{% endif %}
+
+{% if earlier %}
+<h2 class="slot" style="margin-top:24px">Earlier</h2>
+{% for d in earlier %}
+<div class="card" style="opacity:.72">
+  <div class="slot">from {{ d.since }}</div>
+  <p class="diet">{{ d.description }}</p>
+  {% if d.calories or d.protein_g %}
+  <p class="last">
+    {% if d.calories %}~{{ d.calories }} kcal{% endif %}{% if d.calories and d.protein_g %} &middot; {% endif %}{% if d.protein_g %}~{{ d.protein_g }} g protein{% endif %} a day
+  </p>
+  {% endif %}
+  <div class="actions">
+    <a class="btn ghost small" href="/diet/{{ d.id }}/edit">Edit</a>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

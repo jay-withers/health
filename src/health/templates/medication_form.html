@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{% if medication %}Edit{% else %}Add{% endif %} Medication · Health{% endblock %}
+{% block subtitle %}{% if medication %}Edit{% else %}Add{% endif %} Medication{% endblock %}
+{% block back %}<a class="back" href="/medications"><span class="arrow">&larr;</span> Medication</a>{% endblock %}
+{% block body %}
+
+<form method="post" action="{% if medication %}/medications/{{ medication.id }}{% else %}/medications{% endif %}">
+  <div class="card">
+    <label class="slot" for="name">Name</label>
+    <input type="text" id="name" name="name" placeholder="e.g. creatine, ibuprofen" autocomplete="off"
+           value="{{ medication.name if medication else '' }}">
+    <label class="slot" for="dose" style="display:block;margin-top:10px">Dose (optional)</label>
+    <input type="text" id="dose" name="dose" placeholder="e.g. 5 g" autocomplete="off"
+           value="{{ medication.dose if medication else '' }}">
+    <label class="slot" for="frequency" style="display:block;margin-top:10px">How often (optional)</label>
+    <input type="text" id="frequency" name="frequency" placeholder="e.g. daily, as needed" autocomplete="off"
+           value="{{ medication.frequency if medication else '' }}">
+    <label class="slot" for="started" style="display:block;margin-top:10px">Started (optional)</label>
+    <input type="date" id="started" name="started" value="{{ medication.started if medication else today }}">
+    <label class="slot" for="note" style="display:block;margin-top:10px">Note (optional)</label>
+    <input type="text" id="note" name="note" autocomplete="off" value="{{ medication.note if medication else '' }}">
+  </div>
+  <button type="submit">{% if medication %}Save{% else %}Add{% endif %}</button>
+</form>
+
+{% if medication %}
+<form method="post" action="/medications/{{ medication.id }}/delete"
+      data-confirm="Delete this medication?">
+  <button type="submit" class="btn ghost small">Delete</button>
+</form>
+{% endif %}
+{% endblock %}

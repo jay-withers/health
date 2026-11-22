@@ -30,10 +30,12 @@ from ..model import (
     Block,
     Condition,
     Day,
+    Diet,
     Entry,
     Exercise,
     Goal,
     Log,
+    Medication,
     Session,
     SetLog,
 )
@@ -1024,6 +1026,264 @@ def delete_condition(condition_id: str) -> Any:
             "the log was changed elsewhere; the condition was not deleted"
         ) from exc
     return RedirectResponse("/conditions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- diet: the typical day, versioned when it changes ---------------------------
+
+# Typos, not judgements (see MAX_REPS): an extra digit, not an unusual diet.
+MAX_CALORIES = 10000
+MAX_PROTEIN_G = 1000
+
+
+def _amount(value: Any, label: str, ceiling: int) -> int:
+    """A posted whole number from 0 to `ceiling`; 0 when left blank."""
+    raw = str(value or "").strip()
+    if not raw:
+        return 0
+    try:
+        amount = int(float(raw))
+    # NaN is a ValueError here and infinity an OverflowError.
+    except (ValueError, OverflowError) as exc:
+        raise InvalidInput(f"{label} must be a number. Nothing was saved.") from exc
+    if not 0 <= amount <= ceiling:
+        raise InvalidInput(f"{label} must be between 0 and {ceiling}. Nothing was saved.")
+    return amount
+
+
+@router.get("/diet", response_class=HTMLResponse, include_in_schema=False)
+def diet_page(request: Request) -> Any:
+    """The current typical diet, and every earlier version, newest first."""
+    log, _etag = store.load()
+    current = log.current_diet
+    return templates.TemplateResponse(
+        request,
+        "diet.html",
+        {
+            "current": current,
+            "earlier": sorted(
+                (d for d in log.diet if current is None or d.id != current.id),
+                key=lambda d: d.since,
+                reverse=True,
+            ),
+        },
+    )
+
+
+@router.get("/diet/new", response_class=HTMLResponse, include_in_schema=False)
+def new_diet_form(request: Request) -> Any:
+    """A new version, starting from the current one's text and dated today."""
+    log, _etag = store.load()
+    return templates.TemplateResponse(
+        request,
+        "diet_form.html",
+        {"diet": None, "draft": log.current_diet, "since": _today().isoformat()},
+    )
+
+
+@router.get("/diet/{diet_id}/edit", response_class=HTMLResponse, include_in_schema=False)
+def edit_diet_form(request: Request, diet_id: str) -> Any:
+    """Correct one version in place: a typo fixed is not a change of diet."""
+    log, _etag = store.load()
+    diet = next((d for d in log.diet if d.id == diet_id), None)
+    if diet is None:
+        return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "diet_form.html", {"diet": diet, "draft": diet, "since": diet.since}
+    )
+
+
+def _diet_fields(form: Any) -> dict[str, Any]:
+    """What the new and edit forms share. A start date after today is refused:
+    `current_diet` is the latest start, so a mistyped year would replace the
+    diet actually being eaten, in the page and in every prompt."""
+    since = _session_date(form.get("since"))
+    if since > _today().isoformat():
+        raise InvalidInput("The diet can't start after today. Nothing was saved.")
+    return {
+        "since": since,
+        "description": str(form.get("description") or "").strip(),
+        "calories": _amount(form.get("calories"), "Calories", MAX_CALORIES),
+        "protein_g": _amount(form.get("protein_g"), "Protein", MAX_PROTEIN_G),
+    }
+
+
+@router.post("/diet", include_in_schema=False)
+async def save_diet(request: Request) -> Any:
+    """A new version from `since`, or a replacement for one starting that day."""
+    fields = _diet_fields(await request.form())
+    if not fields["description"]:
+        return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+    diet = Diet(id=uuid.uuid4().hex[:12], **fields)
+    try:
+        store.update(lambda current: current.with_diet(diet))
+    except store.ConflictError as exc:
+        raise ConflictResponse("the log was changed elsewhere; the diet was not saved") from exc
+    return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/diet/{diet_id}", include_in_schema=False)
+async def edit_diet(request: Request, diet_id: str) -> Any:
+    fields = _diet_fields(await request.form())
+    if not fields["description"]:
+        return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+    def apply_edit(current: Log) -> Log:
+        existing = next((d for d in current.diet if d.id == diet_id), None)
+        if existing is None:
+            return current
+        # `with_diet` would replace the version already on that date, which
+        # here would delete a different version than the one being edited.
+        if any(d.since == fields["since"] and d.id != diet_id for d in current.diet):
+            raise InvalidInput(
+                "Another version of the diet starts on that date. Nothing was saved."
+            )
+        return current.with_diet(replace(existing, **fields))
+
+    try:
+        store.update(apply_edit)
+    except store.ConflictError as exc:
+        raise ConflictResponse("the log was changed elsewhere; the diet was not saved") from exc
+    return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/diet/{diet_id}/delete", include_in_schema=False)
+def delete_diet(diet_id: str) -> Any:
+    try:
+        store.update(lambda current: current.without_diet(diet_id))
+    except store.ConflictError as exc:
+        raise ConflictResponse("the log was changed elsewhere; the diet was not deleted") from exc
+    return RedirectResponse("/diet", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- medication & supplements ----------------------------------------------------
+
+
+@router.get("/medications", response_class=HTMLResponse, include_in_schema=False)
+def medications_list(request: Request) -> Any:
+    """Read-only: what is being taken, then what was stopped, most recent first."""
+    log, _etag = store.load()
+    return templates.TemplateResponse(
+        request,
+        "medications.html",
+        {
+            "active": _newest_first(
+                (m for m in log.medications if m.status == "active"), lambda m: m.started
+            ),
+            "stopped": _newest_first(
+                (m for m in log.medications if m.status != "active"), lambda m: m.stopped
+            ),
+        },
+    )
+
+
+def _newest_first(
+    medications: Iterable[Medication], when: Callable[[Medication], str]
+) -> list[Medication]:
+    """Latest date first, A to Z within a date. Two sorts, because one
+    `reverse=True` over (date, name) would also run the names Z to A."""
+    return sorted(sorted(medications, key=lambda m: m.name.lower()), key=when, reverse=True)
+
+
+@router.get("/medications/new", response_class=HTMLResponse, include_in_schema=False)
+def new_medication_form(request: Request) -> Any:
+    return templates.TemplateResponse(
+        request, "medication_form.html", {"medication": None, "today": _today().isoformat()}
+    )
+
+
+@router.get(
+    "/medications/{medication_id}/edit", response_class=HTMLResponse, include_in_schema=False
+)
+def edit_medication_form(request: Request, medication_id: str) -> Any:
+    log, _etag = store.load()
+    medication = next((m for m in log.medications if m.id == medication_id), None)
+    if medication is None:
+        return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "medication_form.html", {"medication": medication, "today": medication.started}
+    )
+
+
+def _medication_fields(form: Any) -> dict[str, str]:
+    """What the add and edit forms share. `started` may be left blank: a
+    supplement taken for years has no start date worth guessing at."""
+    started = str(form.get("started") or "").strip()
+    return {
+        "name": str(form.get("name") or "").strip(),
+        "dose": str(form.get("dose") or "").strip(),
+        "frequency": str(form.get("frequency") or "").strip(),
+        "started": _session_date(started) if started else "",
+        "note": str(form.get("note") or "").strip(),
+    }
+
+
+@router.post("/medications", include_in_schema=False)
+async def add_medication(request: Request) -> Any:
+    fields = _medication_fields(await request.form())
+    if not fields["name"]:
+        return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+
+    medication = Medication(id=uuid.uuid4().hex[:12], **fields)
+    try:
+        store.update(lambda current: current.with_medication(medication))
+    except store.ConflictError as exc:
+        raise ConflictResponse(
+            "the log was changed elsewhere; the medication was not saved"
+        ) from exc
+    return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/medications/{medication_id}/stop", include_in_schema=False)
+def stop_medication(medication_id: str) -> Any:
+    today = _today().isoformat()
+
+    def mark_stopped(current: Log) -> Log:
+        medication = next((m for m in current.medications if m.id == medication_id), None)
+        # Already stopped: a resubmitted form must not move the day it stopped.
+        if medication is None or medication.status != "active":
+            return current
+        return current.with_medication(replace(medication, status="stopped", stopped=today))
+
+    try:
+        store.update(mark_stopped)
+    except store.ConflictError as exc:
+        raise ConflictResponse(
+            "the log was changed elsewhere; the medication was not updated"
+        ) from exc
+    return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/medications/{medication_id}", include_in_schema=False)
+async def edit_medication(request: Request, medication_id: str) -> Any:
+    fields = _medication_fields(await request.form())
+    if not fields["name"]:
+        return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+
+    def apply_edit(current: Log) -> Log:
+        existing = next((m for m in current.medications if m.id == medication_id), None)
+        if existing is None:
+            return current
+        return current.with_medication(replace(existing, **fields))
+
+    try:
+        store.update(apply_edit)
+    except store.ConflictError as exc:
+        raise ConflictResponse(
+            "the log was changed elsewhere; the medication was not saved"
+        ) from exc
+    return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/medications/{medication_id}/delete", include_in_schema=False)
+def delete_medication(medication_id: str) -> Any:
+    try:
+        store.update(lambda current: current.without_medication(medication_id))
+    except store.ConflictError as exc:
+        raise ConflictResponse(
+            "the log was changed elsewhere; the medication was not deleted"
+        ) from exc
+    return RedirectResponse("/medications", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- Insights: an index over an AI summary and a heart-rate-zone breakdown ---

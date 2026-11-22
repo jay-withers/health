@@ -5,10 +5,11 @@ log (`store.CHAT_BLOB_NAME`) rather than inside it, because it is talk about
 the record rather than part of it, and cleared by hand from the page.
 
 Every turn re-sends the same context the weekly insight is built from —
-recent sessions, active conditions and goals, Garmin recovery — as a second
-system message, built fresh from the log as it stands at that moment. So a
-session logged mid-conversation is visible on the very next reply, and nothing
-derived from the log is ever stored twice.
+recent sessions, active conditions and goals, typical diet, current
+medication, Garmin recovery — as a second system message, built fresh from
+the log as it stands at that moment. So a session logged mid-conversation is
+visible on the very next reply, and nothing derived from the log is ever
+stored twice.
 
 Chat adds two things the weekly insight leaves out: the current block's full
 prescription, and recent results per slot. The insight only lists either when
@@ -52,7 +53,8 @@ SYSTEM_PROMPT = (
     "injury or condition. You are not a doctor: for anything that sounds like "
     "a medical problem — chest pain, fainting, a sudden or worsening injury, "
     "symptoms that persist — say plainly that they should see a GP or "
-    "physiotherapist, and do not diagnose."
+    "physiotherapist, and do not diagnose. Never advise starting, stopping or "
+    "changing a medication or its dose: refer that to a GP or pharmacist."
 )
 
 

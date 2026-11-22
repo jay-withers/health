@@ -12,6 +12,7 @@ from .factories import (
     achievement,
     block,
     condition,
+    diet,
     entry,
     exercise,
     garmin_activity,
@@ -19,6 +20,7 @@ from .factories import (
     garmin_fitness,
     goal,
     insight,
+    medication,
     session,
 )
 
@@ -29,6 +31,8 @@ def test_round_trips_through_json():
         sessions=(session("2026-09-15", "2026-09-01", "A", entry()),),
         achievements=(achievement(),),
         conditions=(condition(),),
+        diet=(diet(calories=2400, protein_g=160),),
+        medications=(medication(note="with breakfast"),),
         goals=(goal(),),
         insights=(insight(),),
         garmin_activities=(garmin_activity(),),
@@ -529,3 +533,58 @@ def test_exercise_notes_round_trip_and_default_to_none():
 )
 def test_rest_reads_in_seconds_then_minutes(seconds, label):
     assert exercise(rest_seconds=seconds).rest_label == label
+
+
+# --- diet and medication ---------------------------------------------------------
+
+
+def test_a_bare_diet_and_medication_round_trip():
+    """The optional fields are left out when empty, and read back as empty."""
+    log = Log(
+        diet=(diet(),),
+        medications=(medication(dose="", frequency="", started="", note=""),),
+    )
+    payload = log.to_json()
+    assert "calories" not in payload
+    assert '"dose"' not in payload
+    assert Log.from_json(payload) == log
+
+
+def test_the_current_diet_is_the_latest_version():
+    log = Log(diet=(diet(id="new", since="2026-10-01"), diet(id="old", since="2026-01-01")))
+    current = log.current_diet
+    assert current is not None
+    assert current.id == "new"
+    assert Log().current_diet is None
+
+
+def test_a_diet_from_a_new_date_is_a_new_version():
+    log = Log(diet=(diet(id="old", since="2026-01-01"),))
+    updated = log.with_diet(diet(id="new", since="2026-10-01"))
+    assert [d.id for d in updated.diet] == ["old", "new"]
+
+
+def test_a_diet_saved_twice_on_one_day_replaces_rather_than_stacks():
+    """A typo fixed just after saving is not a change of diet."""
+    log = Log(diet=(diet(id="old", since="2026-01-01"), diet(id="typo", since="2026-10-01")))
+    updated = log.with_diet(diet(id="fixed", since="2026-10-01", description="fixed"))
+    assert [d.id for d in updated.diet] == ["old", "fixed"]
+
+
+def test_without_diet_removes_one_version():
+    log = Log(diet=(diet(id="a", since="2026-01-01"), diet(id="b", since="2026-10-01")))
+    assert [d.id for d in log.without_diet("a").diet] == ["b"]
+
+
+def test_with_medication_replaces_by_id():
+    """Stopping a medication is resubmitting the same id with a new status."""
+    log = Log(medications=(medication(id="m1"),))
+    stopped = log.with_medication(medication(id="m1", status="stopped", stopped="2026-10-01"))
+    assert len(stopped.medications) == 1
+    assert stopped.medications[0].status == "stopped"
+    assert stopped.medications[0].stopped == "2026-10-01"
+
+
+def test_without_medication_removes_by_id():
+    log = Log(medications=(medication(id="m1"), medication(id="m2", name="Ibuprofen")))
+    assert [m.id for m in log.without_medication("m1").medications] == ["m2"]

@@ -105,6 +105,14 @@ def test_it_puts_goals_and_conditions_into_more_than_one_state(log):
     assert any(c.status == "resolved" for c in log.conditions)
 
 
+def test_it_has_a_current_and_an_earlier_diet_and_meds_in_both_states(log):
+    assert len(log.diet) == 2
+    assert log.current_diet is not None
+    assert log.current_diet.protein_g
+    assert any(m.status == "active" for m in log.medications)
+    assert any(m.status == "stopped" for m in log.medications)
+
+
 def test_it_has_an_achievement_and_a_weekly_insight(log):
     assert log.achievements
     assert log.insights

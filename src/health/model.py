@@ -361,6 +361,81 @@ class Condition:
 
 
 @dataclass(frozen=True)
+class Diet:
+    """One version of the typical diet: what a normal day's eating looks like.
+
+    Not a food diary. It is written once and rewritten when the diet changes,
+    and each rewrite is a new version from `since` rather than an overwrite, so
+    "changed what I eat on X" stays in the record beside the weight and
+    recovery it might explain. `calories`/`protein_g` are a typical day's
+    figure, 0 when not given.
+    """
+
+    id: str
+    since: str
+    description: str
+    calories: int = 0
+    protein_g: int = 0
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "since": self.since,
+            "description": self.description,
+        }
+        if self.calories:
+            payload["calories"] = self.calories
+        if self.protein_g:
+            payload["protein_g"] = self.protein_g
+        return payload
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> Diet:
+        return cls(
+            id=str(payload.get("id", "")),
+            since=str(payload.get("since", "")),
+            description=str(payload.get("description", "")),
+            calories=int(payload.get("calories", 0) or 0),
+            protein_g=int(payload.get("protein_g", 0) or 0),
+        )
+
+
+@dataclass(frozen=True)
+class Medication:
+    """A medication or supplement being taken. Stopped by resubmitting the same `id`."""
+
+    id: str
+    name: str
+    dose: str = ""
+    frequency: str = ""
+    started: str = ""
+    status: str = "active"
+    stopped: str = ""
+    note: str = ""
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"id": self.id, "name": self.name, "status": self.status}
+        for key in ("dose", "frequency", "started", "stopped", "note"):
+            value = getattr(self, key)
+            if value:
+                payload[key] = value
+        return payload
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> Medication:
+        return cls(
+            id=str(payload.get("id", "")),
+            name=str(payload.get("name", "")),
+            dose=str(payload.get("dose", "")),
+            frequency=str(payload.get("frequency", "")),
+            started=str(payload.get("started", "")),
+            status=str(payload.get("status", "active") or "active"),
+            stopped=str(payload.get("stopped", "")),
+            note=str(payload.get("note", "")),
+        )
+
+
+@dataclass(frozen=True)
 class Goal:
     """A free-form target. Achieved by resubmitting the same `id`."""
 
@@ -664,6 +739,8 @@ class Log:
     sessions: tuple[Session, ...] = ()
     achievements: tuple[Achievement, ...] = ()
     conditions: tuple[Condition, ...] = ()
+    diet: tuple[Diet, ...] = ()
+    medications: tuple[Medication, ...] = ()
     goals: tuple[Goal, ...] = ()
     insights: tuple[Insight, ...] = ()
     garmin_activities: tuple[GarminActivity, ...] = ()
@@ -812,6 +889,35 @@ class Log:
 
     def without_condition(self, condition_id: str) -> Log:
         return replace(self, conditions=tuple(c for c in self.conditions if c.id != condition_id))
+
+    @property
+    def current_diet(self) -> Diet | None:
+        """The typical diet as it stands: the version with the latest `since`."""
+        if not self.diet:
+            return None
+        return max(self.diet, key=lambda d: d.since)
+
+    def with_diet(self, diet: Diet) -> Log:
+        """Add a diet version, replacing any already starting on the same day.
+
+        A same-day replace rather than a second version, so fixing a typo just
+        after saving doesn't record a diet change that never happened.
+        """
+        others = tuple(d for d in self.diet if d.since != diet.since and d.id != diet.id)
+        return replace(self, diet=(*others, diet))
+
+    def without_diet(self, diet_id: str) -> Log:
+        return replace(self, diet=tuple(d for d in self.diet if d.id != diet_id))
+
+    def with_medication(self, medication: Medication) -> Log:
+        """Add or replace a medication by id — resubmitting edits or stops it."""
+        others = tuple(m for m in self.medications if m.id != medication.id)
+        return replace(self, medications=(*others, medication))
+
+    def without_medication(self, medication_id: str) -> Log:
+        return replace(
+            self, medications=tuple(m for m in self.medications if m.id != medication_id)
+        )
 
     def with_goal(self, goal: Goal) -> Log:
         """Add or replace a goal by id — resubmitting edits or achieves it."""
@@ -1000,6 +1106,10 @@ class Log:
                 "conditions": [
                     c.to_json() for c in sorted(self.conditions, key=lambda c: c.started)
                 ],
+                "diet": [d.to_json() for d in sorted(self.diet, key=lambda d: d.since)],
+                "medications": [
+                    m.to_json() for m in sorted(self.medications, key=lambda m: (m.started, m.id))
+                ],
                 "goals": [g.to_json() for g in sorted(self.goals, key=lambda g: g.id)],
                 "insights": [i.to_json() for i in sorted(self.insights, key=lambda i: i.week_of)],
                 "garmin_activities": [
@@ -1050,6 +1160,14 @@ class Log:
                 Condition.from_json(c)
                 for c in payload.get("conditions", []) or ()
                 if isinstance(c, dict)
+            ),
+            diet=tuple(
+                Diet.from_json(d) for d in payload.get("diet", []) or () if isinstance(d, dict)
+            ),
+            medications=tuple(
+                Medication.from_json(m)
+                for m in payload.get("medications", []) or ()
+                if isinstance(m, dict)
             ),
             goals=tuple(
                 Goal.from_json(g) for g in payload.get("goals", []) or () if isinstance(g, dict)
