@@ -29,6 +29,10 @@ PAGES = [
     "/goals/new",
     "/conditions",
     "/conditions/new",
+    "/diet",
+    "/diet/new",
+    "/medications",
+    "/medications/new",
     "/insights",
     "/insights/strength",
     "/insights/strength/e1rm",
@@ -105,6 +109,31 @@ def test_a_new_goal_is_listed_after_a_reload(signed_in: Page) -> None:
 
     page.reload()
     expect(page.get_by_text(title)).to_be_visible()
+
+
+def test_a_new_medication_is_listed_after_a_reload(signed_in: Page) -> None:
+    page = signed_in
+    name = f"Magnesium {uuid.uuid4().hex[:6]}"
+    page.goto("/medications/new")
+    page.fill('input[name="name"]', name)
+    page.fill('input[name="dose"]', "200 mg")
+    page.click('form[action="/medications"] [type="submit"]')
+    page.wait_for_url("**/medications")
+
+    page.reload()
+    expect(page.get_by_text(name)).to_be_visible()
+
+
+def test_an_updated_diet_is_shown_after_a_reload(signed_in: Page) -> None:
+    page = signed_in
+    description = f"Oats and eggs {uuid.uuid4().hex[:6]}"
+    page.goto("/diet/new")
+    page.fill('textarea[name="description"]', description)
+    page.click('form[action="/diet"] [type="submit"]')
+    page.wait_for_url("**/diet")
+
+    page.reload()
+    expect(page.get_by_text(description)).to_be_visible()
 
 
 def test_back_leaves_a_page_rather_than_stepping_through_its_chips(signed_in: Page) -> None:

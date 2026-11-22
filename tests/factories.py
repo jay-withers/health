@@ -7,6 +7,7 @@ from health.model import (
     Block,
     Condition,
     Day,
+    Diet,
     Entry,
     Exercise,
     GarminActivity,
@@ -14,6 +15,7 @@ from health.model import (
     GarminFitness,
     Goal,
     Insight,
+    Medication,
     Session,
     SetLog,
 )
@@ -84,6 +86,38 @@ def achievement(
     id: str = "ach1", date: str = "2026-09-15", title: str = "Ran a 5k", note: str = ""
 ) -> Achievement:
     return Achievement(id=id, date=date, title=title, note=note)
+
+
+def diet(
+    id: str = "diet1",
+    since: str = "2026-09-01",
+    description: str = "Porridge, chicken and rice, salmon and veg",
+    calories: int = 0,
+    protein_g: int = 0,
+) -> Diet:
+    return Diet(id=id, since=since, description=description, calories=calories, protein_g=protein_g)
+
+
+def medication(
+    id: str = "med1",
+    name: str = "Creatine",
+    dose: str = "5 g",
+    frequency: str = "daily",
+    started: str = "2026-09-01",
+    status: str = "active",
+    stopped: str = "",
+    note: str = "",
+) -> Medication:
+    return Medication(
+        id=id,
+        name=name,
+        dose=dose,
+        frequency=frequency,
+        started=started,
+        status=status,
+        stopped=stopped,
+        note=note,
+    )
 
 
 def condition(

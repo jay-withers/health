@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{% if diet %}Edit{% else %}Update{% endif %} Diet · Health{% endblock %}
+{% block subtitle %}{% if diet %}Edit{% else %}Update{% endif %} Diet{% endblock %}
+{% block back %}<a class="back" href="/diet"><span class="arrow">&larr;</span> Diet</a>{% endblock %}
+{% block body %}
+
+<form method="post" action="{% if diet %}/diet/{{ diet.id }}{% else %}/diet{% endif %}">
+  <div class="card">
+    <label class="slot" for="description">A typical day</label>
+    <textarea id="description" name="description" rows="8"
+              placeholder="e.g. Breakfast: porridge with whey. Lunch: chicken wrap. Dinner: rice, salmon, veg. Snacks: Greek yoghurt, fruit.">{{ draft.description if draft else '' }}</textarea>
+    <label class="slot" for="since" style="display:block;margin-top:10px">Eating this way since</label>
+    <input type="date" id="since" name="since" value="{{ since }}">
+    <label class="slot" for="calories" style="display:block;margin-top:10px">Calories a day (optional)</label>
+    <input type="number" id="calories" name="calories" min="0" max="10000" inputmode="numeric"
+           value="{{ draft.calories if draft and draft.calories else '' }}">
+    <label class="slot" for="protein_g" style="display:block;margin-top:10px">Protein a day, g (optional)</label>
+    <input type="number" id="protein_g" name="protein_g" min="0" max="1000" inputmode="numeric"
+           value="{{ draft.protein_g if draft and draft.protein_g else '' }}">
+  </div>
+  {% if diet %}
+  <p class="last">Corrects this version in place. To record a change of diet, use Update diet instead.</p>
+  {% else %}
+  <p class="last">Saved as a new version: the one with the latest date is your current diet, and
+    the others stay under Earlier. Saving again with the same date replaces it.</p>
+  {% endif %}
+  <button type="submit">Save</button>
+</form>
+
+{% if diet %}
+<form method="post" action="/diet/{{ diet.id }}/delete"
+      data-confirm="Delete this version of the diet?">
+  <button type="submit" class="btn ghost small">Delete</button>
+</form>
+{% endif %}
+{% endblock %}

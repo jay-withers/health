@@ -19,9 +19,10 @@ it has rather than to look like anyone's actual training:
 - the **finisher** carries a time on some sessions and not others, because it is
   optional and that is worth being able to see.
 
-Achievements, goals, injuries/conditions, the insight and the Garmin section
-get the same treatment: a handful of invented entries chosen to put those
-screens into more than one state (active and achieved, active and resolved)
+Achievements, goals, injuries/conditions, diet, medication, the insight and
+the Garmin section get the same treatment: a handful of invented entries chosen
+to put those screens into more than one state (active and achieved, active and
+resolved, current and earlier)
 rather than left empty, since an empty section is the one state local work
 has the least reason to look at.
 """
@@ -35,6 +36,7 @@ from .model import (
     Block,
     Condition,
     Day,
+    Diet,
     Entry,
     Exercise,
     GarminActivity,
@@ -43,6 +45,7 @@ from .model import (
     Goal,
     Insight,
     Log,
+    Medication,
     Session,
     SetLog,
 )
@@ -87,6 +90,8 @@ def sample_log(today: date | None = None) -> Log:
         sessions=_sessions(block, started),
         achievements=_achievements(now),
         conditions=_conditions(now),
+        diet=_diet(now),
+        medications=_medications(now),
         goals=_goals(now),
         insights=_insights(now),
         garmin_activities=_garmin_activities(now),
@@ -183,6 +188,53 @@ def _conditions(now: date) -> tuple[Condition, ...]:
             started=(now - timedelta(days=14)).isoformat(),
             status="active",
             note="Tight after deadlifts — mobility work before legs day",
+        ),
+    )
+
+
+def _diet(now: date) -> tuple[Diet, ...]:
+    # Sorted by `since`, for the same reason `_conditions` is sorted by `started`.
+    return (
+        Diet(
+            id="sample-diet-before",
+            since=(now - timedelta(days=120)).isoformat(),
+            description="Cereal for breakfast, a meal deal at lunch, pasta most evenings.",
+            calories=2600,
+        ),
+        Diet(
+            id="sample-diet-now",
+            since=(now - timedelta(days=21)).isoformat(),
+            description=(
+                "Breakfast: porridge with a scoop of whey.\n"
+                "Lunch: chicken and rice.\n"
+                "Dinner: salmon or lean mince with veg.\n"
+                "Snacks: Greek yoghurt, fruit."
+            ),
+            calories=2400,
+            protein_g=160,
+        ),
+    )
+
+
+def _medications(now: date) -> tuple[Medication, ...]:
+    # Sorted by (`started`, `id`), the order `Log.to_json` writes them in.
+    return (
+        Medication(
+            id="sample-ibuprofen",
+            name="Ibuprofen",
+            dose="400 mg",
+            frequency="as needed",
+            started=(now - timedelta(days=14)).isoformat(),
+            status="stopped",
+            stopped=(now - timedelta(days=7)).isoformat(),
+            note="For the lower back",
+        ),
+        Medication(
+            id="sample-creatine",
+            name="Creatine",
+            dose="5 g",
+            frequency="daily",
+            started=(now - timedelta(days=10)).isoformat(),
         ),
     )
 

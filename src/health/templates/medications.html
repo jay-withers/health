@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Medication · Health{% endblock %}
+{% block subtitle %}Medication &amp; Supplements{% endblock %}
+{% block back %}<a class="back" href="/"><span class="arrow">&larr;</span> Home</a>{% endblock %}
+{% block body %}
+
+<a class="btn small" href="/medications/new">Add medication</a>
+
+<h2 class="slot" style="margin-top:24px">Taking</h2>
+{% if active %}
+{% for m in active %}
+<div class="card">
+  {% if m.started %}<div class="slot">since {{ m.started }}</div>{% endif %}
+  <div class="name">{{ m.name }}</div>
+  {% if m.dose or m.frequency %}<p class="last">{{ m.dose }}{% if m.dose and m.frequency %} &middot; {% endif %}{{ m.frequency }}</p>{% endif %}
+  {% if m.note %}<p class="last">{{ m.note }}</p>{% endif %}
+  <div class="actions">
+    <form method="post" action="/medications/{{ m.id }}/stop">
+      <button type="submit" class="btn ghost small">Mark stopped</button>
+    </form>
+    <a class="btn ghost small" href="/medications/{{ m.id }}/edit">Edit</a>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="last">Nothing listed.</p>
+{% endif %}
+
+{% if stopped %}
+<h2 class="slot" style="margin-top:24px">Stopped</h2>
+{% for m in stopped %}
+<div class="card" style="opacity:.72">
+  <div class="slot">{% if m.started %}{{ m.started }} {% endif %}&ndash; {{ m.stopped }}</div>
+  <div class="name">{{ m.name }}</div>
+  {% if m.dose or m.frequency %}<p class="last">{{ m.dose }}{% if m.dose and m.frequency %} &middot; {% endif %}{{ m.frequency }}</p>{% endif %}
+  {% if m.note %}<p class="last">{{ m.note }}</p>{% endif %}
+  <div class="actions">
+    <a class="btn ghost small" href="/medications/{{ m.id }}/edit">Edit</a>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -17,7 +17,7 @@ from appkit import integrity as kit
 from health import integrity, seed
 from health.model import Entry, GarminActivity, GarminDay, Log, SetLog
 
-from .factories import achievement, block, entry, session
+from .factories import achievement, block, diet, entry, medication, session
 
 
 def _log(*sessions: Any, **more: Any) -> Log:
@@ -110,6 +110,24 @@ def test_a_duplicate_garmin_activity_and_day():
         "garmin_activities: id g1 is used 2 times",
         "garmin_days: date 2026-09-15 is used 2 times",
     ]
+
+
+def test_a_duplicate_medication_id():
+    found = integrity.check(Log(medications=(medication("m1"), medication("m1"))))
+    assert found == ["medications: id m1 is used 2 times"]
+
+
+def test_two_diets_starting_on_one_day():
+    found = integrity.check(Log(diet=(diet("d1"), diet("d2"))))
+    assert found == ["diet: since 2026-09-01 is used 2 times"]
+
+
+def test_a_negative_diet_figure_names_its_position_not_its_text():
+    found = integrity.check(
+        Log(diet=(diet("d1", since="2026-01-01"), diet("d2", calories=-1, protein_g=-5)))
+    )
+    assert found == ["diet[1]: negative calories", "diet[1]: negative protein"]
+    assert not any("Porridge" in p for p in found)
 
 
 def test_a_problem_never_names_an_exercise_or_a_load():

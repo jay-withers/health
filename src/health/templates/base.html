@@ -59,10 +59,13 @@
   .set span { color: var(--dim); font-size: 13px; }
   /* 16px minimum on inputs: anything smaller makes iOS Safari zoom the page on
      focus, and it never zooms back out. */
-  input[type=number], input[type=text], input[type=password], input[type=date] {
+  input[type=number], input[type=text], input[type=password], input[type=date], textarea {
     width: 100%; padding: 12px; font-size: 16px; border-radius: 8px;
     border: 1px solid var(--line); background: #0b0b0e; color: var(--text);
   }
+  textarea { font-family: inherit; resize: vertical; }
+  /* A typed description keeps the line breaks it was typed with. */
+  .diet { white-space: pre-line; margin: 6px 0 0; }
   button, .btn {
     display: block; width: 100%; padding: 15px; font-size: 16px; font-weight: 600;
     border: 0; border-radius: var(--radius); background: var(--accent); color: #06130c;

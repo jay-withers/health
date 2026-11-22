@@ -47,7 +47,12 @@ SYSTEM_PROMPT = (
     "or ride alongside the lifting, time spent in the higher heart rate "
     "zones, a sleep or resting-heart-rate trend worth flagging) rather than "
     "listing it separately — it is context for the same week, not a second "
-    "report."
+    "report. A typical diet and current medication or supplements may be "
+    "given: mention the diet only where it bears on the week (protein against "
+    "the training, a recent change against recovery or weight), bear in mind "
+    "that some medications affect heart rate, recovery or performance when "
+    "reading the Garmin data, and never advise starting, stopping or changing "
+    "a medication."
 )
 
 
@@ -96,6 +101,9 @@ def _prompt(log: Log, today: date) -> str:
     else:
         lines.append("- none")
 
+    lines.extend(_diet_lines(log, cutoff))
+    lines.extend(_medication_lines(log))
+
     lines.append("\nActive goals:")
     if active_goals:
         lines.extend(f"- {g.title}" for g in active_goals)
@@ -130,6 +138,41 @@ def _prompt(log: Log, today: date) -> str:
                 lines.append(f"- {slot}: {progression}")
 
     return "\n".join(lines)
+
+
+def _diet_lines(log: Log, cutoff: str) -> list[str]:
+    """The typical diet as it stands, and whether it changed this week."""
+    diet = log.current_diet
+    if diet is None:
+        return ["\nTypical diet:", "- none recorded"]
+    figures = [
+        figure
+        for figure in (
+            f"~{diet.calories} kcal" if diet.calories else "",
+            f"~{diet.protein_g} g protein" if diet.protein_g else "",
+        )
+        if figure
+    ]
+    # Continuation lines indented, so a description typed over several lines
+    # stays one item rather than reading as loose text between sections.
+    described = "\n  ".join(line.strip() for line in diet.description.splitlines() if line.strip())
+    lines = [f"\nTypical diet (since {diet.since}):", f"- {described}"]
+    if figures:
+        lines.append(f"- a typical day: {', '.join(figures)}")
+    if diet.since >= cutoff and len(log.diet) > 1:
+        lines.append(f"- this diet changed on {diet.since}, this week")
+    return lines
+
+
+def _medication_lines(log: Log) -> list[str]:
+    lines = ["\nCurrent medication and supplements:"]
+    taking = sorted((m for m in log.medications if m.status == "active"), key=lambda m: m.name)
+    if not taking:
+        return [*lines, "- none"]
+    for m in taking:
+        line = " ".join(part for part in (m.name, m.dose, m.frequency) if part)
+        lines.append(f"- {line}: {m.note}" if m.note else f"- {line}")
+    return lines
 
 
 def _sets(sets: tuple[SetLog, ...]) -> str:

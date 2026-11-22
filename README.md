@@ -76,7 +76,7 @@ now lives under `/strength` rather than at the root. `/` is a light home page
 linking to it and to the sections below, and it is where the
 installed-to-home-screen phone icon opens.
 
-Six sections that are not derived from sets and reps:
+Eight sections that are not derived from sets and reps:
 
 - **Achievements** (`/achievements`) — a free-text, append-only list of
   milestones. Never edited, only added to.
@@ -85,6 +85,23 @@ Six sections that are not derived from sets and reps:
 - **Injuries & conditions** (`/conditions`) — structured records (body part,
   status, start/resolved dates, a note), marked resolved by hand. Read by the
   insight so it does not suggest anything that would aggravate an active one.
+- **Diet** (`/diet`) — a description of a typical day's eating, with optional
+  daily calories and protein. Not a food diary: it is written once and
+  updated when the diet changes. Each update is a new version from the date
+  given, and earlier versions stay listed, so a change of diet sits in the
+  record beside the weight and recovery it might explain. **Edit** corrects
+  one version in place, keeping its date, so fixing a typo isn't a diet
+  change; an update saved twice with the same date also replaces rather than
+  adds. A start date after today is refused, since the latest date is the
+  current diet.
+- **Medication** (`/medications`) — medication and supplements: name, dose,
+  how often, start date and a note, marked stopped by hand like a condition.
+  No daily ticks.
+
+  The insight and Chat both read the current diet and active medication (stopped
+  ones are left out), along with whether the diet changed in the last week. So
+  medication names reach DeepSeek. Both prompts tell the model never to advise
+  starting, stopping or changing a medication.
 - **Insights** (`/insights`) — an index linking to three sub-pages, not a page
   in its own right. **AI Insights** (`/insights/ai`) is a DeepSeek-generated
   summary of the week, dated by when it was generated rather than the week it
@@ -148,7 +165,8 @@ Six sections that are not derived from sets and reps:
   run, which is the kind of thing an unofficial API punishes.
 - **Chat** (`/chat`) — a conversation with DeepSeek about training, recovery
   and health. Every turn re-sends the same context the weekly insight is built
-  from (last 7 days of sessions, active conditions and goals, Garmin recovery),
+  from (last 7 days of sessions, active conditions and goals, typical diet,
+  current medication, Garmin recovery),
   plus the current block's full prescription and the last three results per
   slot — the insight lists those only when a block is ending, which left a
   week-one "what do you think of my new block?" unanswerable. All of it is
@@ -230,8 +248,9 @@ five sessions chosen to put every card into a different state (climbing inside
 the range, ready to add weight, stalled below it, and never logged), so a change
 to the session screen can be seen rather than imagined. The same sample also
 seeds an achievement, a goal in each of active/achieved, a condition in each of
-active/resolved, and a weekly insight, so those four sections are never the
-one blank thing in an otherwise-populated local run. `make seed FORCE=1`
+active/resolved, a current and an earlier diet, a medication in each of
+active/stopped, and a weekly insight, so none of those sections is the one
+blank thing in an otherwise-populated local run. `make seed FORCE=1`
 replaces an existing one (make cannot take `--force` as a target argument).
 
 It writes to the local file only, and **refuses outright when

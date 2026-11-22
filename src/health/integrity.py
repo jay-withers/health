@@ -81,6 +81,8 @@ def check(log: Log) -> list[str]:
         ("blocks", (b.id for b in log.blocks)),
         ("achievements", (a.id for a in log.achievements)),
         ("conditions", (c.id for c in log.conditions)),
+        ("diet", (d.id for d in log.diet)),
+        ("medications", (m.id for m in log.medications)),
         ("goals", (g.id for g in log.goals)),
         ("insights", (i.id for i in log.insights)),
         ("garmin_activities", (a.id for a in log.garmin_activities)),
@@ -88,6 +90,14 @@ def check(log: Log) -> list[str]:
         problems += _duplicates(name, "id", ids)
     problems += _duplicates("garmin_days", "date", (d.date for d in log.garmin_days))
     problems += _duplicates("garmin_fitness", "date", (f.date for f in log.garmin_fitness))
+    # A diet version is keyed by the day it starts (`Log.with_diet`), so two on
+    # one day leave which is current down to sort order.
+    problems += _duplicates("diet", "since", (d.since for d in log.diet))
+    for position, version in enumerate(log.diet):
+        if version.calories < 0:
+            problems.append(f"diet[{position}]: negative calories")
+        if version.protein_g < 0:
+            problems.append(f"diet[{position}]: negative protein")
 
     keys: Counter[tuple[str, str]] = Counter()
     for position, session in enumerate(log.sessions):
