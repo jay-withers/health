@@ -35,7 +35,7 @@ jobs:
     # never reports, which blocks a pull request rather than passing it. The
     # browser tests (`playwright: true`) add about a minute, mostly the
     # Chromium and apt install.
-    uses: jay-withers/workflows/.github/workflows/python.yml@7e124ba6227a9efebd37b0fff487bad8a1d83975 # v1.31.5
+    uses: jay-withers/workflows/.github/workflows/python.yml@fa8accd07133582cba854b28f3eeddf7649d9685 # v1.31.6
     with:
       # The package is at the repository root; there is one deliverable and no
       # apps/ nesting to point at.
