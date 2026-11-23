@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import date, timedelta
 
 import pytest
+from appkit import csrf
 from fastapi.testclient import TestClient
 from hypothesis import example, given
 from hypothesis import strategies as st
@@ -38,6 +39,11 @@ from .factories import (
     insight,
     session,
 )
+
+
+def login_data(client: TestClient, passcode: str) -> dict[str, str]:
+    """What the login form posts: the passcode and the page's CSRF token."""
+    return {"passcode": passcode, "csrf_token": csrf.token_in(client.get("/login").text)}
 
 
 @pytest.fixture
@@ -74,7 +80,7 @@ def seeded():
 
 
 def login(client: TestClient) -> None:
-    response = client.post("/login", data={"passcode": "test-passcode"})
+    response = client.post("/login", data=login_data(client, "test-passcode"))
     assert response.status_code == 303
 
 
@@ -106,7 +112,37 @@ def test_the_gate_is_closed_by_default(client):
 
 
 def test_a_wrong_passcode_is_refused(client):
-    assert client.post("/login", data={"passcode": "wrong"}).status_code == 401
+    assert client.post("/login", data=login_data(client, "wrong")).status_code == 401
+
+
+def test_a_login_without_the_csrf_token_is_refused_even_with_the_passcode(client):
+    client.get("/login")
+    response = client.post("/login", data={"passcode": "test-passcode"}, follow_redirects=False)
+    assert response.status_code == 403
+    assert "expired" in response.text
+    # The re-render carries a token that works, so a retry signs in.
+    retry = {"passcode": "test-passcode", "csrf_token": csrf.token_in(response.text)}
+    assert client.post("/login", data=retry, follow_redirects=False).status_code == 303
+
+
+def test_a_browser_that_keeps_no_cookie_is_told_cookies_are_needed(client):
+    token = csrf.token_in(client.get("/login").text)
+    client.cookies.clear()
+    data = {"passcode": "test-passcode", "csrf_token": token}
+    response = client.post("/login", data=data, follow_redirects=False)
+    assert response.status_code == 403
+    assert "needs cookies" in response.text
+
+
+def test_a_cross_site_post_is_refused(client):
+    response = client.post(
+        "/login",
+        data=login_data(client, "test-passcode"),
+        headers={"Sec-Fetch-Site": "cross-site"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 403
+    assert "content-security-policy" in response.headers
 
 
 @pytest.mark.parametrize("passcode", ["bench-100\u00a3", "\u2696\ufe0f-day"])
@@ -122,8 +158,8 @@ def test_a_passcode_outside_ascii_is_compared_rather_than_crashing(monkeypatch, 
     settings_module.settings.cache_clear()
 
     with TestClient(create_app(), base_url="https://testserver", follow_redirects=False) as client:
-        assert client.post("/login", data={"passcode": "wrong"}).status_code == 401
-        assert client.post("/login", data={"passcode": passcode}).status_code == 303
+        assert client.post("/login", data=login_data(client, "wrong")).status_code == 401
+        assert client.post("/login", data=login_data(client, passcode)).status_code == 303
 
 
 def test_a_missing_passcode_fails_at_start_up_not_at_first_login(monkeypatch):

@@ -6,12 +6,17 @@ import re
 from pathlib import Path
 
 import pytest
-from appkit import headers
+from appkit import csrf, headers
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import health
 from health.api.main import create_app
+
+
+def login_data(client: TestClient, passcode: str) -> dict[str, str]:
+    """What the login form posts: the passcode and the page's CSRF token."""
+    return {"passcode": passcode, "csrf_token": csrf.token_in(client.get("/login").text)}
 
 
 @pytest.fixture
@@ -23,7 +28,10 @@ def anonymous():
 @pytest.fixture
 def client(anonymous):
     # https and a real login for the reasons in test_api.py's fixture.
-    assert anonymous.post("/login", data={"passcode": "test-passcode"}).status_code in (200, 303)
+    assert anonymous.post("/login", data=login_data(anonymous, "test-passcode")).status_code in (
+        200,
+        303,
+    )
     return anonymous
 
 
