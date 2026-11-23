@@ -2,6 +2,7 @@
 {% block title %}Health{% endblock %}
 {% block body %}
 <form method="post" action="/login" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
   {% if error %}<p class="reason stalled">{{ error }}</p>{% endif %}
   <label class="slot" for="passcode">Passcode</label>
   <input type="password" id="passcode" name="passcode" autocomplete="current-password"
