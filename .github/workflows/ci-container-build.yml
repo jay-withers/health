@@ -67,7 +67,7 @@ jobs:
       contents: read
       security-events: write # Trivy findings to code scanning
       issues: write # build-failed issue, outside pull requests
-    uses: jay-withers/workflows/.github/workflows/docker.yml@b9a1e595d7b6ec2d00d6bce65abc7a11c4f319f6 # v1.31.1
+    uses: jay-withers/workflows/.github/workflows/docker.yml@7e124ba6227a9efebd37b0fff487bad8a1d83975 # v1.31.5
     with:
       images: |
         [{"name": "health", "context": "."}]
