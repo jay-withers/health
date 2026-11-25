@@ -53,7 +53,8 @@ SYSTEM_PROMPT = (
     "and recovery), bear in mind "
     "that some medications affect heart rate, recovery or performance when "
     "reading the Garmin data, and never advise starting, stopping or changing "
-    "a medication."
+    "a medication. When their age is given, let it inform what counts as good "
+    "progress and how much recovery to expect, without dwelling on it."
 )
 
 
@@ -76,7 +77,13 @@ def _prompt(log: Log, today: date) -> str:
     active_conditions = [c for c in log.conditions if c.status == "active"]
     active_goals = [g for g in log.goals if g.status == "active"]
 
-    lines = [f"Training sessions in the last 7 days (since {cutoff}):"]
+    lines = []
+    # Age frames what counts as good progress and how much recovery a week
+    # needs. Left out, not "unknown", before a Garmin sync has read it.
+    age = log.age_on(today)
+    if age is not None:
+        lines.append(f"Their age: {age}.\n")
+    lines.append(f"Training sessions in the last 7 days (since {cutoff}):")
     if recent:
         for session in recent:
             performed = ", ".join(

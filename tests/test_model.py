@@ -621,3 +621,43 @@ def test_a_stored_kind_is_kept_as_it_is():
     """Coerced on read, a stored empty kind would change in the round trip."""
     stored = '{"diet_items": [{"id": "i", "name": "x", "kind": ""}]}'
     assert Log.from_json(stored).diet_items[0].kind == ""
+
+
+# --- age ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("today", "age"),
+    [
+        (date(2026, 3, 13), 39),  # the day before the birthday
+        (date(2026, 3, 14), 40),  # the birthday itself
+        (date(2026, 11, 25), 40),
+    ],
+)
+def test_age_turns_over_on_the_birthday(today, age):
+    assert Log(birth_date="1986-03-14").age_on(today) == age
+
+
+def test_a_leap_day_birthday_turns_over_on_the_first_of_march():
+    log = Log(birth_date="2000-02-29")
+    assert log.age_on(date(2026, 2, 28)) == 25
+    assert log.age_on(date(2026, 3, 1)) == 26
+
+
+@pytest.mark.parametrize("birth_date", ["", "not a date", "2099-01-01"])
+def test_no_age_without_a_usable_birth_date(birth_date):
+    assert Log(birth_date=birth_date).age_on(date(2026, 11, 25)) is None
+
+
+def test_birth_date_round_trips_through_json():
+    assert Log.from_json(Log(birth_date="1986-03-14").to_json()).birth_date == "1986-03-14"
+
+
+def test_with_garmin_sync_records_the_birth_date_and_keeps_it_when_none_came_back():
+    log = Log().with_garmin_sync(
+        activities=[], days=[], keep_since="2026-08-01", birth_date="1986-03-14"
+    )
+    assert log.birth_date == "1986-03-14"
+    assert log.with_garmin_sync(activities=[], days=[], keep_since="2026-08-01").birth_date == (
+        "1986-03-14"
+    )

@@ -259,13 +259,13 @@ def _garmin_sync(days: int | None = None) -> int:
     from . import store
     from .garmin import GARMIN_RETENTION_DAYS, sync_garmin
 
-    activities, days_synced, fitness = sync_garmin(days=days)
+    activities, days_synced, fitness, birth_date = sync_garmin(days=days)
     keep_since = (date.today() - timedelta(days=GARMIN_RETENTION_DAYS)).isoformat()
     synced_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     store.update(
         lambda current: current.with_garmin_sync(
-            activities, days_synced, keep_since, synced_at, fitness
+            activities, days_synced, keep_since, synced_at, fitness, birth_date
         )
     )
     logging.getLogger("health").info(

@@ -104,7 +104,11 @@
 {% endif %}
 
 <h2 class="slot" style="margin-top:24px">Add an exercise</h2>
-<form method="post" action="/session/{{ day }}/extra">
+{# `added` is the redirect back from a save that landed: it marks the
+   form logged, so the script drops its draft and the boxes start empty for
+   the next exercise. #}
+<form method="post" action="/session/{{ day }}/extra" id="add"
+      data-logged="{{ 1 if request.query_params.get('added') else 0 }}">
   <input type="hidden" name="date" value="{{ today }}">
   <div class="card">
     <label class="slot" for="extra-name">Exercise</label>
@@ -117,17 +121,18 @@
     <datalist id="known-slots">
       {% for s in slots %}<option value="{{ s }}">{% endfor %}
     </datalist>
-    <div class="sets" style="margin-top:10px">
-      {% for position in range(3) %}
+    {# One set to start with; "Add set" copies the row, up to max_extra_sets. #}
+    <div class="sets" id="extra-sets" style="margin-top:10px" data-max="{{ max_extra_sets }}">
       <div class="set">
-        <span>{{ position + 1 }}</span>
-        <input type="number" name="reps_{{ position }}" placeholder="reps"
+        <span>1</span>
+        <input type="number" name="reps_0" placeholder="reps"
                inputmode="numeric" min="0" max="100">
-        <input type="number" name="weight_{{ position }}" placeholder="kg"
+        <input type="number" name="weight_0" placeholder="kg"
                inputmode="decimal" step="0.5" min="0" max="500">
       </div>
-      {% endfor %}
     </div>
+    {# Hidden until the script that adds rows has run, so it is never a dead button. #}
+    <button type="button" class="btn ghost small" id="add-set" style="margin-top:8px" hidden>Add set</button>
     <label class="slot" for="extra-note" style="display:block;margin-top:10px">Note (optional)</label>
     <input type="text" id="extra-note" name="note" autocomplete="off">
   </div>
@@ -150,6 +155,43 @@
 // an append-only log is a lie about what was performed, and merging partial
 // sessions is a far larger change than keeping a draft on the device.
 (function () {
+  var sets = document.getElementById('extra-sets');
+  var addSetButton = document.getElementById('add-set');
+
+  // Another set row on the "add an exercise" form: a copy of the first, empty,
+  // numbered and named for its position, which is what the server reads.
+  function addSet() {
+    var rows = sets.querySelectorAll('.set');
+    if (rows.length >= Number(sets.dataset.max)) { return; }
+    var row = rows[0].cloneNode(true);
+    var position = rows.length;
+    row.querySelector('span').textContent = String(position + 1);
+    row.querySelectorAll('input').forEach(function (input) {
+      input.name = input.name.replace(/_\d+$/, '_' + position);
+      input.value = '';
+    });
+    sets.appendChild(row);
+    if (position + 1 >= Number(sets.dataset.max)) { addSetButton.hidden = true; }
+    return row;
+  }
+  if (sets && addSetButton) {
+    addSetButton.hidden = false;
+    addSetButton.addEventListener('click', function () {
+      var row = addSet();
+      if (row) { row.querySelector('input').focus(); }
+    });
+  }
+
+  // `?added=1` has done its job once the draft is dropped. Left in the
+  // address, a reload would drop the draft of the next exercise too.
+  var query = new URLSearchParams(window.location.search);
+  if (query.has('added') && window.history.replaceState) {
+    query.delete('added');
+    var rest = query.toString();
+    window.history.replaceState(
+      null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+  }
+
   document.querySelectorAll('form[action^="/session/"]').forEach(setUp);
 
   function setUp(form) {
@@ -194,6 +236,16 @@
     // A draft from a previous session is not an offer worth making - it would
     // put last week's numbers into today's boxes as values rather than hints.
     if (!draft || draft.date !== dateField.value) { return; }
+
+    // A draft can hold more sets than the one row the page starts with.
+    if (sets && form.contains(sets)) {
+      Object.keys(draft.fields || {}).forEach(function (name) {
+        var match = /^(?:reps|weight)_(\d+)$/.exec(name);
+        while (match && sets.querySelectorAll('.set').length <= Number(match[1])) {
+          if (!addSet()) { break; }
+        }
+      });
+    }
 
     var count = 0;
     Object.keys(draft.fields || {}).forEach(function (name) {

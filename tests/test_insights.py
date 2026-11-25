@@ -263,3 +263,12 @@ def test_only_the_latest_old_description_is_sent_under_its_own_heading_with_figu
         "Described in words before the list (from 2026-11-01):\n- oats\n"
         "- a typical day: ~2400 kcal, ~160 g protein\n"
     ) in prompt
+
+
+def test_prompt_gives_their_age_from_the_garmin_birth_date():
+    prompt = _prompt(Log(birth_date="1986-03-14"), date(2026, 11, 25))
+    assert prompt.startswith("Their age: 40.")
+
+
+def test_prompt_leaves_age_out_before_a_sync_has_read_it():
+    assert "Their age" not in _prompt(Log(), date(2026, 11, 25))

@@ -801,6 +801,10 @@ class Log:
     garmin_days: tuple[GarminDay, ...] = ()
     garmin_fitness: tuple[GarminFitness, ...] = ()
     garmin_synced_at: str = ""
+    # YYYY-MM-DD from the Garmin profile, refreshed by each sync. The date,
+    # not the age, so `age_on` is right the day after a birthday without a
+    # sync in between. "" until a sync has read one.
+    birth_date: str = ""
     # One note per exercise name — "seat on 4", "blue handle" — shown on that
     # exercise's session card until the next save replaces it. The one
     # deliberately overwritten thing in an append-only document: it is a
@@ -1003,6 +1007,7 @@ class Log:
         keep_since: str,
         synced_at: str = "",
         fitness: Iterable[GarminFitness] = (),
+        birth_date: str = "",
     ) -> Log:
         """Merge freshly-synced Garmin records and drop anything older than `keep_since`.
 
@@ -1019,6 +1024,7 @@ class Log:
         derived from `date.today()` inside this method: what "now" means is
         the caller's decision, this method just records it. Left blank rather
         than made required so a test can merge records without caring when.
+        A blank `birth_date` (the profile call failed) keeps the one on record.
         """
         merged_activities = {a.id: a for a in self.garmin_activities} | {
             a.id: a for a in activities
@@ -1046,7 +1052,18 @@ class Log:
                 )
             ),
             garmin_synced_at=synced_at or self.garmin_synced_at,
+            birth_date=birth_date or self.birth_date,
         )
+
+    def age_on(self, today: date) -> int | None:
+        """Age in whole years on `today`, or None without a usable birth date."""
+        try:
+            born = date.fromisoformat(self.birth_date)
+        except ValueError:
+            return None
+        before_birthday = (today.month, today.day) < (born.month, born.day)
+        age = today.year - born.year - before_birthday
+        return age if age >= 0 else None
 
     def garmin_zone_seconds_since(self, cutoff: str, of_max: bool = False) -> tuple[int, ...]:
         """Total time in each heart rate zone across activities on/after `cutoff`.
@@ -1180,6 +1197,7 @@ class Log:
                     f.to_json() for f in sorted(self.garmin_fitness, key=lambda f: f.date)
                 ],
                 "garmin_synced_at": self.garmin_synced_at,
+                "birth_date": self.birth_date,
                 "exercise_notes": dict(sorted(self.exercise_notes.items())),
             },
             indent=2,
@@ -1256,6 +1274,7 @@ class Log:
                 if isinstance(f, dict)
             ),
             garmin_synced_at=str(payload.get("garmin_synced_at", "") or ""),
+            birth_date=str(payload.get("birth_date", "") or ""),
             exercise_notes={
                 str(k): str(v)
                 for k, v in (payload.get("exercise_notes") or {}).items()

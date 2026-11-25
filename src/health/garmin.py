@@ -14,7 +14,8 @@ Field names below (`activityId`, `startTimeLocal`, `activityType.typeKey`,
 `metricDescriptors[].key`/`activityDetailMetrics[].metrics` (`directTimestamp`,
 `directHeartRate`), `maxHeartRateUsed`, `hrvSummary.lastNightAvg`/
 `.status`, `mostRecentVO2Max.generic.vo2MaxPreciseValue`/`.vo2MaxValue`,
-`speed_and_heart_rate.speed`/`.heartRate`, `avgStressLevel`) are
+`speed_and_heart_rate.speed`/`.heartRate`, `avgStressLevel`,
+`userData.birthDate`) are
 Garmin's own, confirmed against community-documented response shapes
 rather than this library's (minimal) type hints — Garmin can change them
 without notice, which is why every read here is defensive (`.get()` with a
@@ -68,8 +69,11 @@ HR_SAMPLE_MAX_GAP_SECONDS = 30
 
 def sync_garmin(
     today: date | None = None, days: int | None = None
-) -> tuple[list[GarminActivity], list[GarminDay], list[GarminFitness]]:
+) -> tuple[list[GarminActivity], list[GarminDay], list[GarminFitness], str]:
     """Fetch the trailing `days` (default `GARMIN_SYNC_DAYS`) of activities and daily summaries.
+
+    The fourth value is the birth date on the Garmin profile (see
+    `_birth_date`), or "" when it didn't come back.
 
     An auth failure (bad credentials, an MFA challenge the unofficial API
     can't complete) is not caught here — it propagates, the same way a missing
@@ -115,7 +119,26 @@ def sync_garmin(
     fitness_today = _fitness(client, today.isoformat())
     fitness = [fitness_today] if fitness_today else []
 
-    return activities, days_out, fitness
+    return activities, days_out, fitness, _birth_date(client)
+
+
+def _birth_date(client: Any) -> str:
+    """The birth date on the Garmin Connect profile, as YYYY-MM-DD, or "".
+
+    From `get_user_profile`'s `userData.birthDate`: the user-settings call
+    the library already makes at login, so this costs one small request.
+    Stored rather than the age itself, so the age moves on by itself on the
+    birthday instead of waiting for a sync. "" (and the log keeps whatever it
+    had) on a failure or a value that isn't a date, rather than failing the
+    sync over a field nothing else depends on.
+    """
+    try:
+        profile = client.get_user_profile() or {}
+        raw = str((profile.get("userData") or {}).get("birthDate") or "")[:10]
+        return date.fromisoformat(raw).isoformat() if raw else ""
+    except Exception:
+        logger.warning("could not fetch the birth date from the Garmin profile", exc_info=True)
+        return ""
 
 
 def _client() -> Any:

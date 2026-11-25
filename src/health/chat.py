@@ -5,7 +5,7 @@ log (`store.CHAT_BLOB_NAME`) rather than inside it, because it is talk about
 the record rather than part of it, and cleared by hand from the page.
 
 Every turn re-sends the same context the weekly insight is built from —
-recent sessions, active conditions and goals, typical diet, current
+age, recent sessions, active conditions and goals, typical diet, current
 medication, Garmin recovery — as a second system message, built fresh from
 the log as it stands at that moment. So a session logged mid-conversation is
 visible on the very next reply, and nothing derived from the log is ever
