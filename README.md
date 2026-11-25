@@ -423,8 +423,8 @@ Every workflow is a thin caller of a reusable workflow in
 commit SHA with the tag as a comment. Required checks are set in `github-repos`,
 not here: `pre-commit / Pre-commit`, `test / Test`, `terraform / Terraform`,
 `terraform-plan` and `container-build`. Read them off `gh pr checks` rather
-than inferring them. `test / Test` includes mypy and diff coverage (at least 80%
-of the lines a PR changes in `health` must be run by a test) and the browser
+than inferring them. `test / Test` includes mypy, ruff and two coverage floors (total coverage of
+`health`, and the lines a PR changes, must each be at least 90%) and the browser
 tests in `tests/e2e/`, against a Chromium the workflow installs. `ci-codeql` scans
 the workflows, and code scanning is on, so a new high or critical alert blocks
 the merge.

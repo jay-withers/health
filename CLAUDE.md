@@ -226,12 +226,12 @@ deploys green and fails at its first scheduled run.
 one ignore for a deprecation raised inside starlette's own `TestClient` import —
 market-agent carries the identical ignore.
 
-CI gates two more things, both in `test / Test`: `make typecheck` (mypy over
-`src/` and `tests/`, config in `pyproject.toml`) and diff coverage. At least
-80% of the lines a PR changes in `health` must be run by a test. Total coverage
-is reported, never gated, since a floor on it mostly measures how much of the
-Azure SDK path is mocked. Don't meet the diff gate with a test that only
-asserts a mock.
+CI gates three more things, all in `test / Test`: `make typecheck` (mypy over
+`src/` and `tests/`, config in `pyproject.toml`), ruff (`ruff check` and `ruff
+format --check`, the same ruff `make lint` runs) and coverage. Total coverage
+of `health` must be at least 90%, and so must the lines a PR changes; the
+table is in the job summary, not a PR comment. Don't meet either floor with a
+test that only asserts a mock.
 
 Two things the fixtures exist to guarantee:
 
