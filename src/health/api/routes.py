@@ -363,8 +363,12 @@ async def log_extra_exercise(request: Request, day: str) -> Any:
     """
     log, _etag = store.load()
     block = log.current_block
-    if block is None or (day not in block.days and day not in LOOSE_DAYS):
+    # The day as the block (or LOOSE_DAYS) spells it, not as the request did:
+    # every redirect below is built from it, so none carries a posted value.
+    known = next((d for d in (*block.days, *LOOSE_DAYS) if d == day), None) if block else None
+    if block is None or known is None:
         return RedirectResponse("/strength", status_code=status.HTTP_303_SEE_OTHER)
+    day = known
 
     form = await request.form()
     name = str(form.get("name") or "").strip()
