@@ -213,6 +213,13 @@ is this app's readiness read). `/healthz` must keep reporting `version` from
 serving from `latestReadyRevisionName`, a weaker check meant for rolling back
 to images from before `version` existed.
 
+The same `IMAGE_TAG` shows beside the name in the header of every signed-in
+page (the `app_version` template global and `base.html`'s `version` block),
+and nothing when it is unset or blank. Not on the sign-in page (`login.html`
+empties the block; a new public page should too). That is a choice about what
+the page shows, not a secret: `/healthz` returns the same tag to anyone, and
+the smoke test depends on it doing so.
+
 Each job is also run once with `args = ["selfcheck"]` (`selfcheck.py`), through
 ARM's job start API with the job's own template so the env and secret
 references survive. **Keep `selfcheck` free of side effects** (no email, no

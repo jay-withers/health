@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import pathlib
 import re
 import statistics
@@ -63,6 +64,11 @@ STATIC_DIR = PACKAGE_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals["csrf_token"] = csrf.token
+# The release this revision runs, beside the app's name on every signed-in
+# page: the same IMAGE_TAG /healthz reports. Read per render rather than at
+# import, and empty when unset or blank (local `make run`), which renders
+# nothing.
+templates.env.globals["app_version"] = lambda: os.environ.get("IMAGE_TAG", "").strip()
 
 public = APIRouter()
 router = APIRouter()

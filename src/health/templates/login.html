@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Health{% endblock %}
+{# Not before the passcode: the release is for someone already signed in. #}
+{% block version %}{% endblock %}
 {% block body %}
 <form method="post" action="/login" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
