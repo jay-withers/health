@@ -213,12 +213,14 @@ is this app's readiness read). `/healthz` must keep reporting `version` from
 serving from `latestReadyRevisionName`, a weaker check meant for rolling back
 to images from before `version` existed.
 
-The same `IMAGE_TAG` shows beside the name in the header of every signed-in
+The same `IMAGE_TAG`, trimmed, shows beside the name in the header of every signed-in
 page (the `app_version` template global and `base.html`'s `version` block),
 and nothing when it is unset or blank. Not on the sign-in page (`login.html`
 empties the block; a new public page should too). That is a choice about what
 the page shows, not a secret: `/healthz` returns the same tag to anyone, and
 the smoke test depends on it doing so.
+
+`ci-container-build` checks checks the image's Python is the one `mise.toml` pins, which local runs and CI test on (workflows v1.35.0+, the image's `"python"` field); `mise.toml` is in its path filter, so a Python bump runs it.
 
 Each job is also run once with `args = ["selfcheck"]` (`selfcheck.py`), through
 ARM's job start API with the job's own template so the env and secret
