@@ -16,6 +16,7 @@ from health import chat, store
 from health import settings as settings_module
 from health.api.main import create_app
 from health.api.routes import (
+    MAX_EXTRA_SETS,
     _chosen_range,
     _fitness_chart,
     _hours_label,
@@ -975,7 +976,7 @@ def test_logging_a_manual_exercise_on_a_loose_day(client, seeded):
         },
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/session/manual"
+    assert response.headers["location"] == "/session/manual?added=1#add"
 
     log, _ = store.load()
     assert len(log.sessions) == 1
@@ -1006,6 +1007,55 @@ def test_logging_a_manual_exercise_alongside_prescribed_ones(client, seeded):
     # No weight filled in: a bodyweight/band exercise, reps alone still counts.
     page = client.get("/session/A").text
     assert "Face Pulls" in page
+
+
+def test_a_manual_exercise_records_every_set_added_not_just_three(client, seeded):
+    """The form starts with one set and adds rows, so a fifth set must land."""
+    login(client)
+    sets = {f"reps_{n}": str(10 - n) for n in range(5)} | {
+        f"weight_{n}": str(20 + n) for n in range(5)
+    }
+    client.post(
+        "/session/manual/extra",
+        data={"date": date.today().isoformat(), "name": "Dips", "slot": "chest", **sets},
+    )
+    entry = store.load()[0].sessions[0].entries[0]
+    assert [(s.reps, s.weight) for s in entry.sets] == [(10 - n, 20.0 + n) for n in range(5)]
+
+
+def test_a_manual_exercise_with_sets_past_the_ceiling_is_refused_not_cut_short(client, seeded):
+    """Cut short, the redirect would clear the draft and lose the rest."""
+    login(client)
+    sets = {f"reps_{n}": "5" for n in range(MAX_EXTRA_SETS + 1)}
+    response = client.post(
+        "/session/manual/extra",
+        data={"date": date.today().isoformat(), "name": "Dips", "slot": "chest", **sets},
+    )
+    assert response.status_code == 422
+    assert store.load()[0].sessions == ()
+
+
+def test_a_manual_exercise_not_recorded_goes_back_to_the_form(client, seeded):
+    login(client)
+    response = client.post("/session/manual/extra", data={"name": "Plank", "slot": "core"})
+    assert response.headers["location"] == "/session/manual#add"
+
+
+def test_the_add_exercise_form_starts_with_one_set_and_can_add_more(client, seeded):
+    login(client)
+    page = client.get("/session/manual").text
+    form = page[page.index('action="/session/manual/extra"') :]
+    assert 'name="reps_0"' in form
+    assert 'name="reps_1"' not in form
+    assert 'id="add-set"' in form
+    assert f'data-max="{MAX_EXTRA_SETS}"' in form
+
+
+def test_the_add_exercise_form_is_marked_logged_only_after_a_save(client, seeded):
+    """What lets its script drop the draft, so the boxes empty for the next one."""
+    login(client)
+    assert 'id="add"\n      data-logged="0"' in client.get("/session/manual").text
+    assert 'id="add"\n      data-logged="1"' in client.get("/session/manual?added=1").text
 
 
 def test_a_manual_exercise_with_no_name_or_slot_is_not_recorded(client, seeded):
@@ -2515,9 +2565,23 @@ def test_garmin_page_when_empty(client, seeded):
     assert "Never synced yet" in page
 
 
+def test_the_garmin_page_shows_the_age_from_the_garmin_profile(client, seeded):
+    store.save(Log(birth_date="1986-03-14"))
+    login(client)
+    page = client.get("/garmin").text
+    assert (
+        f"age {Log(birth_date='1986-03-14').age_on(date.today())}, from your Garmin profile" in page
+    )
+
+
+def test_the_garmin_page_shows_no_age_before_a_sync_has_read_it(client, seeded):
+    login(client)
+    assert "from your Garmin profile" not in client.get("/garmin").text
+
+
 def test_sync_garmin_now_calls_garmin_and_redirects_back(client, seeded, monkeypatch):
     synced_activity = garmin_activity(id="a1", activity_type="swimming")
-    monkeypatch.setattr("health.garmin.sync_garmin", lambda: ([synced_activity], [], []))
+    monkeypatch.setattr("health.garmin.sync_garmin", lambda: ([synced_activity], [], [], ""))
     login(client)
 
     response = client.post("/garmin/sync", follow_redirects=False)

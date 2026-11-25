@@ -69,6 +69,13 @@ reminder, not a record of what happened. It's keyed by exercise name, like
 weight suggestions, so a renamed exercise starts without one. A note can be
 saved on its own, before any sets, without starting a session.
 
+Every session page ends with **Add an exercise**, for anything the block
+doesn't prescribe, and `/session/manual` is a day that is nothing but that
+form, for training on any day. It starts with one set; **Add set** adds
+another row, up to `MAX_EXTRA_SETS` (20). Weight is optional, since a blank is
+bodyweight. After a save the form comes back empty for the next exercise.
+Until then, what is typed is kept on the phone as a draft, like the cards.
+
 ## Beyond the lift log
 
 The lift log itself — block/day, session logging, history, block rotation —
@@ -114,7 +121,9 @@ Eight sections that are not derived from sets and reps:
   entry can be deleted individually. When Garmin data has been synced, the
   prompt includes the last 7 days of cardio activity and recovery (steps,
   resting heart rate, sleep) alongside the lift log, so the summary can speak
-  to the whole week rather than just the barbell work. The scheduled run
+  to the whole week rather than just the barbell work. It also gives your
+  age, worked out from the birth date on your Garmin profile, so progress and
+  recovery are judged for it; before a sync has read one, age is left out. The scheduled run
   (Sundays at 20:00 UTC) also emails the insight through Resend to
   `INSIGHT-EMAIL-TO`; the button doesn't, since whoever pressed it is already
   looking at the result.
@@ -159,11 +168,13 @@ Eight sections that are not derived from sets and reps:
   instead of replacing it. A cached login session is stored as a second small
   blob in the same container the log lives in, so the job re-authenticates
   with a password only when that cache is missing or rejected — not on every
-  run, which is the kind of thing an unofficial API punishes.
+  run, which is the kind of thing an unofficial API punishes. Each sync also
+  reads the birth date from the Garmin profile (`Log.birth_date`); the page
+  shows the age it gives, and the insight and Chat read it.
 - **Chat** (`/chat`) — a conversation with DeepSeek about training, recovery
   and health. Every turn re-sends the same context the weekly insight is built
-  from (last 7 days of sessions, active conditions and goals, typical diet,
-  current medication, Garmin recovery),
+  from (age, last 7 days of sessions, active conditions and goals, typical
+  diet, current medication, Garmin recovery),
   plus the current block's full prescription and the last three results per
   slot — the insight lists those only when a block is ending, which left a
   week-one "what do you think of my new block?" unanswerable. All of it is

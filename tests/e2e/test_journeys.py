@@ -99,6 +99,36 @@ def test_a_logged_set_is_there_after_a_reload(signed_in: Page) -> None:
     expect(page.locator('input[name="weight_0_0"]')).to_have_value("41.5")
 
 
+def test_a_manual_exercise_takes_added_sets_and_the_form_clears_after(signed_in: Page) -> None:
+    """Regression: the form's on-device draft outlived the save, so the
+    exercise just added was typed back into the boxes for the next one."""
+    page = signed_in
+    name = f"Dips {uuid.uuid4().hex[:6]}"
+    page.goto("/session/manual")
+    form = page.locator("form#add")
+    expect(form.locator(".set")).to_have_count(1)
+    form.locator('input[name="name"]').fill(name)
+    form.locator('input[name="slot"]').fill("chest")
+    form.locator('input[name="reps_0"]').fill("10")
+    form.locator('input[name="weight_0"]').fill("20")
+    form.locator("#add-set").click()
+    form.locator('input[name="reps_1"]').fill("8")
+    form.locator('input[name="weight_1"]').fill("22.5")
+    form.locator('[type="submit"]').click()
+    page.wait_for_url("**/session/manual#add")
+
+    logged = page.locator(".card", has_text=name)
+    expect(logged).to_contain_text("10\u00d720kg, 8\u00d722.5kg")
+    expect(form.locator('input[name="name"]')).to_have_value("")
+    expect(form.locator('input[name="reps_0"]')).to_have_value("")
+    expect(form.locator(".set")).to_have_count(1)
+
+    # Still clear after a reload, and a fresh draft is kept as before.
+    form.locator('input[name="name"]').fill("Half typed")
+    page.reload()
+    expect(form.locator('input[name="name"]')).to_have_value("Half typed")
+
+
 def test_a_new_goal_is_listed_after_a_reload(signed_in: Page) -> None:
     page = signed_in
     title = f"Deadlift {uuid.uuid4().hex[:6]}"

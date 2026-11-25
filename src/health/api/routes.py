@@ -91,6 +91,10 @@ class InvalidInput(Exception):
 MAX_REPS = 100
 MAX_LOAD_KG = 500.0
 
+# Set rows the "add an exercise" form offers. It starts with one and adds a row
+# at a time; this is only a ceiling, well past any real session.
+MAX_EXTRA_SETS = 20
+
 
 def _set(reps: int, weight: float) -> SetLog:
     """A set from posted numbers, refusing the impossible and the absurd.
@@ -340,6 +344,7 @@ def session_form(request: Request, day: str) -> Any:
             # "Bicep" surfaces the "Bicep Curls" already on record instead of
             # inviting a slightly different name for the same movement.
             "known_exercises": _known_exercise_names(log),
+            "max_extra_sets": MAX_EXTRA_SETS,
         },
     )
 
@@ -367,12 +372,16 @@ async def log_extra_exercise(request: Request, day: str) -> Any:
     if not name or not slot:
         # Nothing worth recording without knowing what it was or where it
         # counts toward — same "silently do nothing" choice as an empty
-        # prescribed card.
-        return RedirectResponse(f"/session/{day}", status_code=status.HTTP_303_SEE_OTHER)
+        # prescribed card. Back at the form, where the draft is restored.
+        return RedirectResponse(f"/session/{day}#add", status_code=status.HTTP_303_SEE_OTHER)
 
     when = _session_date(form.get("date"))
+    if form.get(f"reps_{MAX_EXTRA_SETS}") is not None:
+        # Refused rather than cut short: the redirect after a save clears the
+        # draft, so a dropped set would be gone from the phone as well.
+        raise InvalidInput(f"At most {MAX_EXTRA_SETS} sets at once. Nothing was saved.")
     sets = []
-    for position in range(3):
+    for position in range(MAX_EXTRA_SETS):
         reps = _int(form.get(f"reps_{position}"))
         if reps is None:
             continue
@@ -382,7 +391,7 @@ async def log_extra_exercise(request: Request, day: str) -> Any:
         sets.append(_set(reps, _float(form.get(f"weight_{position}")) or 0.0))
 
     if not sets:
-        return RedirectResponse(f"/session/{day}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(f"/session/{day}#add", status_code=status.HTTP_303_SEE_OTHER)
 
     entry = Entry(
         slot=slot, exercise=name, sets=tuple(sets), note=str(form.get("note") or "").strip()
@@ -399,7 +408,9 @@ async def log_extra_exercise(request: Request, day: str) -> Any:
     logger.info(
         "recorded extra exercise %s on %s day %s", _loggable(name), _loggable(when), _loggable(day)
     )
-    return RedirectResponse(f"/session/{day}", status_code=status.HTTP_303_SEE_OTHER)
+    # `added` tells the page this form's draft has landed, so it clears for
+    # the next exercise; `#add` keeps the phone on the form rather than the top.
+    return RedirectResponse(f"/session/{day}?added=1#add", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/session/{day}/{index}", include_in_schema=False)
@@ -2472,6 +2483,7 @@ def garmin_list(request: Request, view: str = "activities", activity_type: str =
             "selected_type": activity_type,
             "days": sorted(log.garmin_days, key=lambda d: d.date, reverse=True),
             "synced_at": _format_synced_at(log.garmin_synced_at),
+            "age": log.age_on(_today()),
         },
     )
 
@@ -2502,7 +2514,7 @@ def sync_garmin_now() -> Any:
     from ..garmin import GARMIN_RETENTION_DAYS, sync_garmin
 
     try:
-        activities, days, fitness = sync_garmin()
+        activities, days, fitness, birth_date = sync_garmin()
     except Exception as exc:
         logger.warning("manual garmin sync failed", exc_info=True)
         raise GarminSyncFailed(
@@ -2515,7 +2527,7 @@ def sync_garmin_now() -> Any:
     try:
         store.update(
             lambda current: current.with_garmin_sync(
-                activities, days, keep_since, synced_at, fitness
+                activities, days, keep_since, synced_at, fitness, birth_date
             )
         )
     except store.ConflictError as exc:

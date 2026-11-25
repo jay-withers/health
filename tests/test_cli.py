@@ -144,7 +144,7 @@ def test_garmin_sync_records_what_sync_garmin_returns(monkeypatch):
     day = garmin_day(date="2026-09-15")
     fitness = garmin_fitness(date="2026-09-15")
     monkeypatch.setattr(
-        "health.garmin.sync_garmin", lambda days=None: ([activity], [day], [fitness])
+        "health.garmin.sync_garmin", lambda days=None: ([activity], [day], [fitness], "1986-03-14")
     )
 
     assert main(["garmin-sync"]) == 0
@@ -153,6 +153,7 @@ def test_garmin_sync_records_what_sync_garmin_returns(monkeypatch):
     assert log.garmin_activities == (activity,)
     assert log.garmin_days == (day,)
     assert log.garmin_fitness == (fitness,)
+    assert log.birth_date == "1986-03-14"
 
 
 def test_garmin_sync_days_flag_is_passed_through_for_a_one_off_backfill(monkeypatch):
@@ -160,7 +161,7 @@ def test_garmin_sync_days_flag_is_passed_through_for_a_one_off_backfill(monkeypa
 
     def fake_sync_garmin(days=None):
         seen_days.append(days)
-        return [], [], []
+        return [], [], [], ""
 
     monkeypatch.setattr("health.garmin.sync_garmin", fake_sync_garmin)
 

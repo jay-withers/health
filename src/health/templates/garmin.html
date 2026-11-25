@@ -7,7 +7,7 @@
 <form method="post" action="/garmin/sync" data-loading-label="Syncing…">
   <button type="submit" class="btn small">Sync Past 7 Days</button>
 </form>
-<p class="last" style="margin-top:8px">{% if synced_at %}Last synced {{ synced_at }}{% else %}Never synced yet{% endif %}</p>
+<p class="last" style="margin-top:8px">{% if synced_at %}Last synced {{ synced_at }}{% else %}Never synced yet{% endif %}{% if age is not none %} · age {{ age }}, from your Garmin profile{% endif %}</p>
 
 <div class="chips" data-replace style="margin-top:20px">
   <a class="chip {% if view == 'activities' %}on{% endif %}" href="/garmin?view=activities">Activities</a>
