@@ -101,6 +101,35 @@ def test_healthz_reports_the_deployed_image_tag(client, monkeypatch):
     assert client.get("/healthz").json()["version"] == "v1.2.3"
 
 
+def test_a_signed_in_page_shows_the_release_beside_the_name(client, monkeypatch):
+    monkeypatch.setenv("IMAGE_TAG", "v1.2.3")
+    assert client.post("/login", data=login_data(client, "test-passcode")).status_code == 303
+    page = client.get("/")
+    assert page.status_code == 200
+    assert '<span class="version">v1.2.3</span>' in page.text
+
+
+def test_the_sign_in_page_never_shows_the_release(client, monkeypatch):
+    """The release is for someone with the passcode, not for whoever asks."""
+    monkeypatch.setenv("IMAGE_TAG", "v1.2.3")
+    page = client.get("/login")
+    assert page.status_code == 200
+    assert "v1.2.3" not in page.text
+
+
+@pytest.mark.parametrize("tag", [None, "", "  "])
+def test_no_release_is_shown_when_none_is_deployed(client, monkeypatch, tag):
+    """A local `make run` has no IMAGE_TAG; it shows nothing rather than a blank tag."""
+    if tag is None:
+        monkeypatch.delenv("IMAGE_TAG", raising=False)
+    else:
+        monkeypatch.setenv("IMAGE_TAG", tag)
+    assert client.post("/login", data=login_data(client, "test-passcode")).status_code == 303
+    page = client.get("/")
+    assert page.status_code == 200  # the signed-in page, not a redirect to /login
+    assert 'class="version"' not in page.text
+
+
 def test_readyz_does_touch_storage(client, monkeypatch):
     monkeypatch.setattr(store, "load", lambda: (_ for _ in ()).throw(RuntimeError("blob down")))
     assert client.get("/readyz").status_code == 503
