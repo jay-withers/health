@@ -92,6 +92,9 @@ Eight sections that are not derived from sets and reps:
 - **Injuries & conditions** (`/conditions`) — structured records (body part,
   status, start/resolved dates, a note), marked resolved by hand. Read by the
   insight so it does not suggest anything that would aggravate an active one.
+  One resolved in the last six weeks is still sent, with its date, so the
+  advice builds back gradually rather than treating it as never having
+  happened.
 - **Diet** (`/diet`) — a typical week's food and drink: two lists, **Food**
   and **Drinks**, each item with how many days a week you have it (every day
   down to less than weekly), an optional amount and a note. Not a food diary:
@@ -103,8 +106,11 @@ Eight sections that are not derived from sets and reps:
   how often, start date and a note, marked stopped by hand like a condition.
   No daily ticks.
 
-  The insight and Chat both read the diet and active medication (stopped ones
-  are left out). So medication names reach DeepSeek. Both prompts tell the
+  The insight and Chat both read the diet and active medication, each with
+  its start date, plus anything stopped in the last six weeks with the day
+  it stopped (older ones are left out): a recent start or stop is the likely
+  reason for a change in heart rate, sleep or performance. So medication
+  names reach DeepSeek. Both prompts tell the
   model never to advise starting, stopping or changing a medication.
 - **Insights** (`/insights`) — an index linking to three sub-pages, not a page
   in its own right. **AI Insights** (`/insights/ai`) is a DeepSeek-generated
@@ -173,8 +179,9 @@ Eight sections that are not derived from sets and reps:
   shows the age it gives, and the insight and Chat read it.
 - **Chat** (`/chat`) — a conversation with DeepSeek about training, recovery
   and health. Every turn re-sends the same context the weekly insight is built
-  from (age, last 7 days of sessions, active conditions and goals, typical
-  diet, current medication, Garmin recovery),
+  from (age, last 7 days of sessions, active and recently resolved
+  conditions, goals, typical diet, current and recently stopped medication,
+  Garmin recovery),
   plus the current block's full prescription and the last three results per
   slot — the insight lists those only when a block is ending, which left a
   week-one "what do you think of my new block?" unanswerable. All of it is
