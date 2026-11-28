@@ -48,6 +48,49 @@ def test_generates_even_when_the_last_insight_was_just_generated(monkeypatch):
     assert result.summary == "Another one."
 
 
+def test_the_previous_insight_is_sent_so_it_is_not_repeated(monkeypatch):
+    sent: list[str] = []
+    monkeypatch.setattr("health.insights._complete", lambda prompt: sent.append(prompt) or "New.")
+    log = Log(
+        insights=(
+            insight(id="i1", week_of="2026-09-01", summary="Oldest."),
+            insight(id="i2", week_of="2026-09-08", summary="  Protein looks low.\n"),
+            insight(id="i3", week_of="2026-09-08", summary="Protein still low."),
+        )
+    )
+
+    generate_insight(log, today=date(2026, 9, 15))
+
+    assert sent[0].endswith(
+        "\n\nThe previous summary (2026-09-08), not to repeat:\nProtein still low."
+    )
+    assert "Oldest." not in sent[0]
+    assert "Protein looks low." not in sent[0]
+
+
+def test_the_first_insight_has_no_previous_section(monkeypatch):
+    sent: list[str] = []
+    monkeypatch.setattr("health.insights._complete", lambda prompt: sent.append(prompt) or "New.")
+
+    generate_insight(Log(), today=date(2026, 9, 15))
+
+    assert "previous summary" not in sent[0]
+
+
+def test_an_old_or_empty_previous_insight_is_not_sent(monkeypatch):
+    sent: list[str] = []
+    monkeypatch.setattr("health.insights._complete", lambda prompt: sent.append(prompt) or "New.")
+
+    # 2026-09-15 less 14 days is 2026-09-01: the day before is too old.
+    generate_insight(Log(insights=(insight(week_of="2026-08-31"),)), today=date(2026, 9, 15))
+    generate_insight(Log(insights=(insight(summary="  \n"),)), today=date(2026, 9, 15))
+    generate_insight(Log(insights=(insight(week_of="2026-09-01"),)), today=date(2026, 9, 15))
+
+    assert "previous summary" not in sent[0]
+    assert "previous summary" not in sent[1]
+    assert "The previous summary (2026-09-01)" in sent[2]
+
+
 def test_prompt_includes_recent_sessions_and_excludes_old_ones():
     log = Log(
         sessions=(

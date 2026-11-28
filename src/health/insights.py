@@ -37,6 +37,11 @@ BLOCK_ENDING_SOON_WEEKS = 1
 # after an injury, while the change can still explain what the week shows.
 RECENTLY_ENDED_WEEKS = 6
 
+# How old the last insight may be and still be sent as "don't repeat this".
+# Two weeks allows for a missed Sunday; after a longer gap the reader has
+# forgotten it, and the static context is worth saying again.
+PREVIOUS_INSIGHT_MAX_DAYS = 14
+
 SYSTEM_PROMPT = (
     "You write a short, encouraging weekly summary of someone's strength "
     "training for them to read in their training log. Two or three short "
@@ -64,14 +69,19 @@ SYSTEM_PROMPT = (
     "performance, and an injury or condition resolved recently means "
     "building back gradually rather than training as if it never happened. "
     "When their age is given, let it inform what counts as good "
-    "progress and how much recovery to expect, without dwelling on it."
+    "progress and how much recovery to expect, without dwelling on it. "
+    "When the previous summary is given, don't repeat what it said about the "
+    "diet, medication, goals or age, which rarely change from week to week: "
+    "mention one again only when this week gives a new reason to. A lift "
+    "still stalled or an active condition still needing care is always worth "
+    "flagging again, saying it is still the case."
 )
 
 
 def generate_insight(log: Log, today: date | None = None) -> Insight:
     """A new training insight, built from the log as it stands right now."""
     today = today or datetime.now(UTC).date()
-    summary = _complete(_prompt(log, today))
+    summary = _complete(_prompt(log, today) + _previous_lines(log, today))
     return Insight(
         id=uuid.uuid4().hex[:12],
         week_of=today.isoformat(),
@@ -148,6 +158,26 @@ def _prompt(log: Log, today: date) -> str:
                 lines.append(f"- {slot}: {progression}")
 
     return "\n".join(lines)
+
+
+def _previous_lines(log: Log, today: date) -> str:
+    """The last insight's text, so this one says something new.
+
+    Only in the insight, not in Chat's context: a conversation already has
+    its own history, and the last summary isn't something it said.
+    The latest by `week_of`, and of those the last saved (with_insight
+    appends, and the sort is stable), so a regenerate the same day sees the
+    one it follows. Deleted ones are gone, so deleting a poor insight also
+    stops it steering the next. Deliberately the last saved, not the last
+    emailed: there is no record of which were emailed, and the app is where
+    they are all read.
+    """
+    since = (today - timedelta(days=PREVIOUS_INSIGHT_MAX_DAYS)).isoformat()
+    recent = sorted((i for i in log.insights if i.week_of >= since), key=lambda i: i.week_of)
+    summary = recent[-1].summary.strip() if recent else ""
+    if not summary:
+        return ""
+    return f"\n\nThe previous summary ({recent[-1].week_of}), not to repeat:\n{summary}"
 
 
 def _diet_lines(log: Log) -> list[str]:
