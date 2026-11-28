@@ -129,7 +129,13 @@ Eight sections that are not derived from sets and reps:
   resting heart rate, sleep) alongside the lift log, so the summary can speak
   to the whole week rather than just the barbell work. It also gives your
   age, worked out from the birth date on your Garmin profile, so progress and
-  recovery are judged for it; before a sync has read one, age is left out. The scheduled run
+  recovery are judged for it; before a sync has read one, age is left out.
+  The latest saved insight from the last two weeks goes in too, so the new
+  one doesn't repeat what it said about a diet, medication or goal that
+  hasn't changed (a lift still stalled or a condition still needing care is
+  still flagged). That's the latest saved, button or schedule alike, so an
+  emailed insight can skip a point one from the button made that week.
+  Deleting an insight stops it steering the next. The scheduled run
   (Sundays at 20:00 UTC) also emails the insight through Resend to
   `INSIGHT-EMAIL-TO`; the button doesn't, since whoever pressed it is already
   looking at the result.
@@ -179,9 +185,9 @@ Eight sections that are not derived from sets and reps:
   shows the age it gives, and the insight and Chat read it.
 - **Chat** (`/chat`) — a conversation with DeepSeek about training, recovery
   and health. Every turn re-sends the same context the weekly insight is built
-  from (age, last 7 days of sessions, active and recently resolved
-  conditions, goals, typical diet, current and recently stopped medication,
-  Garmin recovery),
+  from, bar the previous insight (age, last 7 days of sessions, active and
+  recently resolved conditions, goals, typical diet, current and recently
+  stopped medication, Garmin recovery),
   plus the current block's full prescription and the last three results per
   slot — the insight lists those only when a block is ending, which left a
   week-one "what do you think of my new block?" unanswerable. All of it is
