@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from health.insights import BLOCK_ENDING_SOON_WEEKS, _prompt, generate_insight
+from health.insights import BLOCK_ENDING_SOON_WEEKS, RECENTLY_ENDED_WEEKS, _prompt, generate_insight
 from health.model import Log
 
 from .factories import (
@@ -80,17 +80,62 @@ def test_prompt_shows_reps_and_weight_for_every_set():
     assert "Pull-ups (8/6 reps)" in prompt
 
 
-def test_prompt_includes_active_conditions_but_not_resolved_ones():
+def test_prompt_includes_active_conditions_with_their_start_but_not_long_resolved_ones():
     log = Log(
         conditions=(
             condition(id="c1", body_part="lower back", status="active", note="from deadlifts"),
-            condition(id="c2", body_part="knee", status="resolved"),
+            condition(id="c2", body_part="knee", status="resolved", resolved="2026-07-01"),
         )
     )
     prompt = _prompt(log, date(2026, 9, 15))
-    assert "lower back" in prompt
-    assert "from deadlifts" in prompt
+    assert "- lower back (since 2026-09-01): from deadlifts" in prompt
     assert "knee" not in prompt
+    assert "Resolved in the last" not in prompt
+
+
+def test_prompt_lists_conditions_resolved_recently_newest_first():
+    log = Log(
+        conditions=(
+            condition(id="c1", body_part="knee", status="resolved", resolved="2026-09-01"),
+            condition(id="c2", body_part="shoulder", status="resolved", resolved="2026-09-10"),
+        )
+    )
+    prompt = _prompt(log, date(2026, 9, 15))
+    assert (
+        "Active injuries/conditions to avoid aggravating:\n- none\n"
+        f"Resolved in the last {RECENTLY_ENDED_WEEKS} weeks (build back gradually):\n"
+        "- shoulder (since 2026-09-01), resolved 2026-09-10\n"
+        "- knee (since 2026-09-01), resolved 2026-09-01"
+    ) in prompt
+
+
+def test_a_recently_resolved_condition_keeps_its_note():
+    log = Log(
+        conditions=(
+            condition(
+                body_part="lower back",
+                started="2026-08-01",
+                status="resolved",
+                resolved="2026-09-10",
+                note="from deadlifts",
+            ),
+        )
+    )
+    prompt = _prompt(log, date(2026, 9, 15))
+    assert "- lower back (since 2026-08-01), resolved 2026-09-10: from deadlifts" in prompt
+
+
+def test_a_condition_resolved_exactly_at_the_window_edge_is_still_listed():
+    # 2026-09-15 less six weeks is 2026-08-04: that day is in, the day before out.
+    log = Log(
+        conditions=(
+            condition(id="c1", body_part="knee", status="resolved", resolved="2026-08-04"),
+            condition(id="c2", body_part="wrist", status="resolved", resolved="2026-08-03"),
+        )
+    )
+    prompt = _prompt(log, date(2026, 9, 15))
+    assert "- knee (since 2026-09-01), resolved 2026-08-04" in prompt
+    assert "wrist" not in prompt
 
 
 def test_prompt_includes_active_goals_but_not_achieved_ones():
@@ -227,16 +272,41 @@ def test_prompt_says_when_no_diet_or_medication_is_recorded():
     assert "Current medication and supplements:\n- none" in prompt
 
 
-def test_prompt_includes_current_medication_but_not_stopped():
+def test_prompt_includes_current_medication_with_its_start_but_not_long_stopped():
     log = Log(
         medications=(
             medication(id="m1", name="Creatine", dose="5 g", frequency="daily", note="am"),
-            medication(id="m2", name="Ibuprofen", status="stopped", stopped="2026-09-01"),
+            medication(id="m2", name="Ibuprofen", status="stopped", stopped="2026-07-01"),
         )
     )
     prompt = _prompt(log, date(2026, 9, 15))
-    assert "- Creatine 5 g daily: am" in prompt
+    assert "- Creatine 5 g daily (since 2026-09-01): am" in prompt
     assert "Ibuprofen" not in prompt
+    assert "Stopped in the last" not in prompt
+
+
+def test_prompt_leaves_the_start_out_when_none_was_given():
+    log = Log(medications=(medication(name="Vitamin D", dose="", frequency="", started=""),))
+    assert "- Vitamin D\n" in _prompt(log, date(2026, 9, 15))
+
+
+def test_prompt_lists_medication_stopped_recently_newest_first():
+    log = Log(
+        medications=(
+            medication(
+                id="m1", name="Ibuprofen", dose="400 mg", status="stopped", stopped="2026-09-01"
+            ),
+            medication(
+                id="m2", name="Propranolol", dose="", status="stopped", stopped="2026-09-12"
+            ),
+        )
+    )
+    prompt = _prompt(log, date(2026, 9, 15))
+    assert (
+        "Current medication and supplements:\n- none\n"
+        f"Stopped in the last {RECENTLY_ENDED_WEEKS} weeks:\n"
+        "- Propranolol: stopped 2026-09-12\n- Ibuprofen 400 mg: stopped 2026-09-01"
+    ) in prompt
 
 
 def test_a_description_from_before_the_list_is_still_sent_and_stays_one_item():
@@ -272,3 +342,15 @@ def test_prompt_gives_their_age_from_the_garmin_birth_date():
 
 def test_prompt_leaves_age_out_before_a_sync_has_read_it():
     assert "Their age" not in _prompt(Log(), date(2026, 11, 25))
+
+
+def test_a_medication_stopped_then_restarted_is_listed_only_as_current():
+    log = Log(
+        medications=(
+            medication(id="m1", name="creatine", status="stopped", stopped="2026-09-01"),
+            medication(id="m2", name="Creatine", started="2026-09-08"),
+        )
+    )
+    prompt = _prompt(log, date(2026, 9, 15))
+    assert "- Creatine 5 g daily (since 2026-09-08)" in prompt
+    assert "Stopped in the last" not in prompt

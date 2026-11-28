@@ -32,6 +32,11 @@ MODEL = "deepseek-chat"
 # block page's own "due" banner appears.
 BLOCK_ENDING_SOON_WEEKS = 1
 
+# How far back a stopped medication or a resolved condition is still worth
+# telling the model about. Six weeks covers most washouts and the build-back
+# after an injury, while the change can still explain what the week shows.
+RECENTLY_ENDED_WEEKS = 6
+
 SYSTEM_PROMPT = (
     "You write a short, encouraging weekly summary of someone's strength "
     "training for them to read in their training log. Two or three short "
@@ -47,13 +52,18 @@ SYSTEM_PROMPT = (
     "or ride alongside the lifting, time spent in the higher heart rate "
     "zones, a sleep or resting-heart-rate trend worth flagging) rather than "
     "listing it separately — it is context for the same week, not a second "
-    "report. A typical week's food and drink and current medication or "
-    "supplements may be given: mention the diet only where it bears on the "
+    "report. A typical week's food and drink and current (and recently "
+    "stopped) medication or supplements may be given: mention the diet only where it bears on the "
     "week (protein against the training, alcohol or caffeine against sleep "
     "and recovery), bear in mind "
     "that some medications affect heart rate, recovery or performance when "
     "reading the Garmin data, and never advise starting, stopping or changing "
-    "a medication. When their age is given, let it inform what counts as good "
+    "a medication. Start dates are given, and anything stopped or resolved "
+    "in the last few weeks is listed: a medication started or stopped "
+    "recently is a likely reason for a change in heart rate, sleep or "
+    "performance, and an injury or condition resolved recently means "
+    "building back gradually rather than training as if it never happened. "
+    "When their age is given, let it inform what counts as good "
     "progress and how much recovery to expect, without dwelling on it."
 )
 
@@ -74,7 +84,6 @@ def _prompt(log: Log, today: date) -> str:
     cutoff = (today - timedelta(days=7)).isoformat()
     recent = [s for s in log.sessions if s.date >= cutoff]
     achieved = [a for a in log.achievements if a.date >= cutoff]
-    active_conditions = [c for c in log.conditions if c.status == "active"]
     active_goals = [g for g in log.goals if g.status == "active"]
 
     lines = []
@@ -100,17 +109,10 @@ def _prompt(log: Log, today: date) -> str:
     else:
         lines.append("- none")
 
-    lines.append("\nActive injuries/conditions to avoid aggravating:")
-    if active_conditions:
-        lines.extend(
-            f"- {c.body_part}: {c.note}" if c.note else f"- {c.body_part}"
-            for c in active_conditions
-        )
-    else:
-        lines.append("- none")
-
+    ended_since = _ended_since(today)
+    lines.extend(_condition_lines(log, ended_since))
     lines.extend(_diet_lines(log))
-    lines.extend(_medication_lines(log))
+    lines.extend(_medication_lines(log, ended_since))
 
     lines.append("\nActive goals:")
     if active_goals:
@@ -180,14 +182,70 @@ def _diet_lines(log: Log) -> list[str]:
     return lines
 
 
-def _medication_lines(log: Log) -> list[str]:
+def _ended_since(today: date) -> str:
+    """The earliest stop or resolve date still listed as a recent change."""
+    return (today - timedelta(weeks=RECENTLY_ENDED_WEEKS)).isoformat()
+
+
+def _since(started: str) -> str:
+    return f" (since {started})" if started else ""
+
+
+def _condition_lines(log: Log, ended_since: str) -> list[str]:
+    """Active conditions with when they started, then any resolved recently.
+
+    The resolved section is left out when empty, rather than "- none", so the
+    model isn't nudged to comment on an absence.
+    """
+    lines = ["\nActive injuries/conditions to avoid aggravating:"]
+    active = [c for c in log.conditions if c.status == "active"]
+    if not active:
+        lines.append("- none")
+    for c in active:
+        line = f"- {c.body_part}{_since(c.started)}"
+        lines.append(f"{line}: {c.note}" if c.note else line)
+    resolved = sorted(
+        (c for c in log.conditions if c.status != "active" and c.resolved >= ended_since),
+        key=lambda c: c.resolved,
+        reverse=True,
+    )
+    if resolved:
+        lines.append(f"Resolved in the last {RECENTLY_ENDED_WEEKS} weeks (build back gradually):")
+        for c in resolved:
+            line = f"- {c.body_part}{_since(c.started)}, resolved {c.resolved}"
+            lines.append(f"{line}: {c.note}" if c.note else line)
+    return lines
+
+
+def _medication_lines(log: Log, ended_since: str) -> list[str]:
+    """What is being taken, with when it started, then anything stopped recently."""
     lines = ["\nCurrent medication and supplements:"]
     taking = sorted((m for m in log.medications if m.status == "active"), key=lambda m: m.name)
     if not taking:
-        return [*lines, "- none"]
+        lines.append("- none")
     for m in taking:
-        line = " ".join(part for part in (m.name, m.dose, m.frequency) if part)
+        line = " ".join(part for part in (m.name, m.dose, m.frequency) if part) + _since(m.started)
         lines.append(f"- {line}: {m.note}" if m.note else f"- {line}")
+    # A stop followed by a restart of the same thing is not a recent change
+    # in what is taken, and listing both would read as a washout.
+    current = {m.name.casefold() for m in taking}
+    stopped = sorted(
+        (
+            m
+            for m in log.medications
+            if m.status != "active"
+            and m.stopped >= ended_since
+            and m.name.casefold() not in current
+        ),
+        key=lambda m: m.stopped,
+        reverse=True,
+    )
+    if stopped:
+        lines.append(f"Stopped in the last {RECENTLY_ENDED_WEEKS} weeks:")
+        lines.extend(
+            f"- {' '.join(part for part in (m.name, m.dose) if part)}: stopped {m.stopped}"
+            for m in stopped
+        )
     return lines
 
 
